@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,10 +21,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ====================
-#include "../Resource/Resource.h"
+//= INCLUDES =====================
+#include "../Resource/IResource.h"
 #include "../Math/Matrix.h"
-//===============================
+//================================
 
 namespace Directus
 {
@@ -61,10 +61,10 @@ namespace Directus
 		std::vector<KeyVector> scaleFrames;
 	};
 
-	class ENGINE_API Animation : public Resource
+	class ENGINE_CLASS Animation : public IResource
 	{
 	public:
-		Animation();
+		Animation(Context* context);
 		~Animation();
 
 		//= RESOURCE INTERFACE ========================

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,17 +19,15 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#pragma once
-
-//= INCLUDES =======================
+//= INCLUDES =============================
 #include "Grid.h"
 #include "../Core/Context.h"
 #include "Vertex.h"
 #include "D3D11/D3D11VertexBuffer.h"
 #include "D3D11/D3D11IndexBuffer.h"
 #include "../Logging/Log.h"
-#include "../Components/Transform.h"
-//==================================
+#include "../Scene/Components/Transform.h"
+//========================================
 
 //= NAMESPACES ================
 using namespace std;
@@ -125,11 +123,11 @@ namespace Directus
 		}
 
 		vector<unsigned int> indices;
-		for (int i = 0; i < vertices.size(); i++)
+		for (unsigned int i = 0; i < vertices.size(); i++)
 		{
 			indices.push_back(i);
 		}
-		m_indexCount = (int)indices.size();
+		m_indexCount = (unsigned int)indices.size();
 
 		CreateBuffers(vertices, indices);
 	}

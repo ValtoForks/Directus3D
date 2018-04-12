@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,52 +21,73 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ============
-#include "imgui/imgui.h"
-#include "IconProvider.h"
-//=======================
+//= INCLUDES =================
+#include "../ImGui/imgui.h"
+#include "EditorHelper.h"
+#include "ThumbnailProvider.h"
+#include <variant>
+//============================
+
+enum DragPayloadType
+{
+	DragPayload_Unknown,
+	DragPayload_Texture,
+	DragPayload_GameObject,
+	DragPayload_Model,
+	DragPayload_Audio,
+	DragPayload_Script
+};
 
 struct DragDropPayload
 {
-	DragDropPayload(const char* data = nullptr, const char* type = nullptr)
+	typedef std::variant<const char*, std::string, unsigned int> payloadVariant;
+	DragDropPayload(DragPayloadType type = DragPayload_Unknown, payloadVariant data = nullptr)
 	{
 		this->type	= type;
 		this->data	= data;
 	}
-	const char* type;
-	const char* data;
+	DragPayloadType type;
+	payloadVariant data;
 };
-static const char* g_dragDrop_Type_Texture		= "0";
-static const char* g_dragDrop_Type_GameObject	= "1";
+
 static bool g_isDragging = false;
 
 class DragDrop
 {
 public:
 
-	static void SendPayload(const DragDropPayload& payload)
+	static DragDrop& Get()
 	{
-		if (ImGui::BeginDragDropSource())
-		{		
-			ImGui::SetDragDropPayload(payload.type, (void*)&payload, sizeof(payload), ImGuiCond_Once);
-			ICON_PROVIDER_IMAGE(Icon_File_Default, 50);
-			ImGui::EndDragDropSource();
-		}
+		static DragDrop instance;
+		return instance;
 	}
 
-	static DragDropPayload GetPayload(const char* type)
+	bool DragBegin() { return ImGui::BeginDragDropSource(); }
+	void DragPayload(const DragDropPayload& payload, void* thumbnailShaderResource = nullptr)
 	{
-		DragDropPayload payload;
+		ImGui::SetDragDropPayload((const char*)&payload.type, (void*)&payload, sizeof(payload), ImGuiCond_Once);
+		if (thumbnailShaderResource)
+		{
+			THUMBNAIL_IMAGE_BY_SHADER_RESOURCE(thumbnailShaderResource, 50);
+		}
+		else
+		{
+			THUMBNAIL_IMAGE_BY_ENUM(Thumbnail_File_Default, 50);
+		}
+	}
+	void DragEnd() { ImGui::EndDragDropSource(); }
 
+	DragDropPayload* GetPayload(DragPayloadType type)
+	{
 		if (ImGui::BeginDragDropTarget())
 		{
-			if (const ImGuiPayload* imguiPayload = ImGui::AcceptDragDropPayload(type))
+			if (const ImGuiPayload* imguiPayload = ImGui::AcceptDragDropPayload((const char*)&type))
 			{
-				payload = *(DragDropPayload*)imguiPayload->Data;
+				return (DragDropPayload*)imguiPayload->Data;
 			}
 			ImGui::EndDragDropTarget();
 		}
 
-		return payload;
+		return nullptr;
 	}
 };

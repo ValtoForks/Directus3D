@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,22 +19,19 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ===========================
+//= INCLUDES ================================
 #include "Model.h"
 #include "Mesh.h"
-#include "../Scene/GameObject.h"
 #include "../Resource/ResourceManager.h"
-#include "../Components/Transform.h"
-#include "../Components/MeshFilter.h"
-#include "../Components/MeshRenderer.h"
-#include "../Components/RigidBody.h"
-#include "../Components/Collider.h"
+#include "../Scene/GameObject.h"
+#include "../Scene/Components/Transform.h"
+#include "../Scene/Components/Renderable.h"
 #include "../Graphics/Vertex.h"
 #include "../Graphics/Material.h"
 #include "../Graphics/Animation.h"
 #include "../IO/FileStream.h"
 #include "../Core/Stopwatch.h"
-//======================================
+//===========================================
 
 //= NAMESPACES ================
 using namespace std;
@@ -43,22 +40,16 @@ using namespace Directus::Math;
 
 namespace Directus
 {
-	Model::Model(Context* context)
+	Model::Model(Context* context) : IResource(context)
 	{
-		m_context = context;
+		//= IResource ============
+		RegisterResource<Model>();
+		//========================
 
-		//= RESOURCE INTERFACE ============
-		RegisterResource(Resource_Model);
-		//=================================
-
-		m_normalizedScale = 1.0f;
-		m_isAnimated = false;
-
-		if (!m_context)
-			return;
-
-		m_resourceManager = m_context->GetSubsystem<ResourceManager>();
-		m_memoryUsageKB = 0;
+		m_normalizedScale	= 1.0f;
+		m_isAnimated		= false;
+		m_resourceManager	= m_context->GetSubsystem<ResourceManager>();
+		m_memoryUsage		= 0;
 	}
 
 	Model::~Model()
@@ -123,13 +114,13 @@ namespace Directus
 	}
 	//=======================================================
 
-	void Model::AddMesh(const string& name, vector<VertexPosTexTBN>& vertices, vector<unsigned int>& indices, weak_ptr<GameObject> gameObject)
+	void Model::AddMesh(const string& name, vector<VertexPosTexTBN>& vertices, vector<unsigned int>& indices, const weak_ptr<GameObject>& gameObject)
 	{
 		// In case this mesh is already loaded, use that one
 		auto existingMesh = m_context->GetSubsystem<ResourceManager>()->GetResourceByName<Mesh>(name);
 		if (!existingMesh.expired())
 		{
-			AddMesh(existingMesh, gameObject);
+			AddMesh(existingMesh, gameObject, false);
 			return;
 		}
 
@@ -141,24 +132,24 @@ namespace Directus
 		mesh->SetIndices(indices);
 
 		// Add the mesh to the model
-		AddMesh(mesh, gameObject);
+		AddMesh(mesh, gameObject, true);
 	}
 
-	void Model::AddMesh(weak_ptr<Mesh> mesh, weak_ptr<GameObject> gameObject)
+	void Model::AddMesh(const weak_ptr<Mesh>& mesh, const weak_ptr<GameObject>& gameObject, bool autoCache /* true */)
 	{
 		if (mesh.expired())
-			return;
-
-		// Don't add mesh if it's already added
-		weak_ptr<Mesh> modelCached;
-		DetermineMeshUniqueness(mesh, &modelCached);
-		if (!modelCached.expired())
 		{
-			// The mesh is cached but we must not forget to add
-			// some standard components to the GameObject that uses it.
-			AddStandardComponents(gameObject, modelCached);
+			LOG_WARNING("Model::AddMesh(): Provided mesh is null, can't execute function");
 			return;
 		}
+
+		// Don't add mesh if it's already added
+		if (DetermineMeshUniqueness(mesh.lock().get()))
+		{	
+			return;
+		}
+			
+		AddStandardComponents(gameObject, mesh);
 
 		// Update the mesh with Model directory relative file path. Then save it to this directory
 		string modelRelativeTexPath = m_modelDirectoryMeshes + mesh.lock()->GetResourceName() + MESH_EXTENSION;
@@ -172,44 +163,47 @@ namespace Directus
 		// Calculate the bounding box of the model as well
 		m_boundingBox.Merge(mesh.lock()->GetBoundingBox());
 
-		// Add it to the resource manager
-		auto weakMesh = m_context->GetSubsystem<ResourceManager>()->Add<Mesh>(mesh.lock());
+		// Cache it or use the provided reference as is
+		auto meshRef = autoCache ? mesh.lock()->Cache<Mesh>() : mesh;
 
-		if (!weakMesh.expired())
+		if (!meshRef.expired())
 		{
 			// Save it
-			m_meshes.push_back(weakMesh);
+			m_meshes.push_back(meshRef);
 
 			// Add some standard components
-			AddStandardComponents(gameObject, weakMesh);
+			AddStandardComponents(gameObject, meshRef);
 
 			// Release geometry data now that we are done with it
-			weakMesh.lock()->ClearGeometry();
+			meshRef.lock()->ClearGeometry();
 		}
 	}
 
-	void Model::AddMaterial(weak_ptr<Material> material, weak_ptr<GameObject> gameObject)
+	void Model::AddMaterial(const weak_ptr<Material>& material, const weak_ptr<GameObject>& gameObject, bool autoCache /* true */)
 	{
 		if (material.expired())
+		{
+			LOG_WARNING("Model::AddMaterial(): Provided material is null, can't execute function");
 			return;
+		}
 
 		// Create a file path for this material
 		material.lock()->SetResourceFilePath(m_modelDirectoryMaterials + material.lock()->GetResourceName() + MATERIAL_EXTENSION);
 
-		// Add it to our resources
-		weak_ptr<Material> weakMat = m_context->GetSubsystem<ResourceManager>()->Add<Material>(material.lock());
-
 		// Save the material in the model directory		
-		weakMat.lock()->SaveToFile(weakMat.lock()->GetResourceFilePath());
+		material.lock()->SaveToFile(material.lock()->GetResourceFilePath());
+
+		// Cache it or use the provided reference as is
+		auto matRef = autoCache ? material.lock()->Cache<Material>() : material;
 
 		// Keep a reference to it
-		m_materials.push_back(weakMat);
+		m_materials.push_back(matRef);
 
-		// Create a MeshRenderer and pass the Material to it
+		// Create a Renderable and pass the material to it
 		if (!gameObject.expired())
 		{
-			MeshRenderer* meshRenderer = gameObject.lock()->AddComponent<MeshRenderer>().lock().get();
-			meshRenderer->SetMaterialFromMemory(material);
+			auto renderable = gameObject.lock()->AddComponent<Renderable>().lock();
+			renderable->SetMaterialFromMemory(matRef, false);
 		}
 	}
 
@@ -230,7 +224,7 @@ namespace Directus
 		return weakAnim;
 	}
 
-	void Model::AddTexture(const weak_ptr<Material> material, TextureType textureType, const string& filePath)
+	void Model::AddTexture(const weak_ptr<Material>& material, TextureType textureType, const string& filePath)
 	{
 		// Validate material
 		if (material.expired())
@@ -239,38 +233,37 @@ namespace Directus
 		// Validate texture file path
 		if (filePath == NOT_ASSIGNED)
 		{
-			LOG_WARNING("Model: Failed to find model requested texture \"" + filePath + "\".");
+			LOG_WARNING("Model::AddTexture(): Provided texture file path hasn't been provided. Can't execute function");
 			return;
 		}
 
-		// Check if the texture is already loaded
-		auto resourceMng = m_context->GetSubsystem<ResourceManager>();
-		string texName = FileSystem::GetFileNameNoExtensionFromFilePath(filePath);
-		weak_ptr<Texture> texture = resourceMng->GetResourceByName<Texture>(texName);
-
-		// If the texture is not loaded, load it 
-		if (texture.expired())
+		// Try to get the texture
+		auto texName = FileSystem::GetFileNameNoExtensionFromFilePath(filePath);
+		auto texture = m_context->GetSubsystem<ResourceManager>()->GetResourceByName<Texture>(texName).lock();
+		if (texture)
 		{
-			// Load texture into memory
-			texture = resourceMng->Load<Texture>(filePath);
-			if (texture.expired())
-				return;
-
-			// Set texture type
-			texture.lock()->SetType(textureType);
+			texture->SetType(textureType); // if this texture was cached from the editor, it has no type, we have to set it
+			material.lock()->SetTexture(texture, false);
+		}
+		// If we didn't get a texture, it's not cached, hence we have to load it and cache it now
+		else if (!texture)
+		{
+			// Load texture
+			texture = make_shared<Texture>(m_context);
+			texture->LoadFromFile(filePath);
+			texture->SetType(textureType);
 
 			// Update the texture with Model directory relative file path. Then save it to this directory
 			string modelRelativeTexPath = m_modelDirectoryTextures + texName + TEXTURE_EXTENSION;
-			texture.lock()->SetResourceFilePath(modelRelativeTexPath);
-			texture.lock()->SetResourceName(FileSystem::GetFileNameNoExtensionFromFilePath(modelRelativeTexPath));
-			texture.lock()->SaveToFile(modelRelativeTexPath);
+			texture->SetResourceFilePath(modelRelativeTexPath);
+			texture->SetResourceName(FileSystem::GetFileNameNoExtensionFromFilePath(modelRelativeTexPath));
+			texture->SaveToFile(modelRelativeTexPath);
+			// Now that the texture is saved, free up it's memory since we already have a shader resource
+			texture->ClearTextureBytes();
 
-			// Since the texture has been loaded and had it's texture bits saved, clear them to free some memory
-			texture.lock()->ClearTextureBits();
+			// Set the texture to the provided material
+			material.lock()->SetTexture(texture->Cache<Texture>(), false);
 		}
-
-		// Set the texture to the provided material
-		material.lock()->SetTexture(texture);
 	}
 
 	weak_ptr<Mesh> Model::GetMeshByName(const string& name)
@@ -295,10 +288,10 @@ namespace Directus
 	void Model::SetWorkingDirectory(const string& directory)
 	{
 		// Set directoties based on new directory
-		m_modelDirectoryModel = directory;
-		m_modelDirectoryMeshes = m_modelDirectoryModel + "Meshes//";
-		m_modelDirectoryMaterials = m_modelDirectoryModel + "Materials//";
-		m_modelDirectoryTextures = m_modelDirectoryModel + "Textures//";
+		m_modelDirectoryModel		= directory;
+		m_modelDirectoryMeshes		= m_modelDirectoryModel + "Meshes//";
+		m_modelDirectoryMaterials	= m_modelDirectoryModel + "Materials//";
+		m_modelDirectoryTextures	= m_modelDirectoryModel + "Textures//";
 
 		// Create directories
 		FileSystem::CreateDirectory_(directory);
@@ -360,88 +353,13 @@ namespace Directus
 		return false;
 	}
 
-	void Model::AddStandardComponents(weak_ptr<GameObject> gameObject, weak_ptr<Mesh> mesh)
+	void Model::AddStandardComponents(const weak_ptr<GameObject>& gameObject, const weak_ptr<Mesh>& mesh)
 	{
 		if (gameObject.expired())
 			return;
 
-		// Add a MeshFilter
-		MeshFilter* meshFilter = gameObject.lock()->AddComponent<MeshFilter>().lock().get();
-		meshFilter->SetMesh(mesh);
-
-		if (meshFilter->GetMeshType() == MeshType_Custom)
-		{
-			// Add a RigidBody
-			gameObject.lock()->AddComponent<RigidBody>();
-
-			// Add a Collider
-			Collider* collider = gameObject.lock()->AddComponent<Collider>().lock().get();
-			collider->SetShapeType(ColliderShape_Mesh);
-		}
-	}
-
-	void Model::DetermineMeshUniqueness(weak_ptr<Mesh> mesh, weak_ptr<Mesh>* modelCached)
-	{
-		// Some meshes can come from model formats like .obj
-		// Such formats contain pure geometry data, meaning that there is no transformation data.
-		// This in turn means that in order to have instances of the same mesh using different transforms,
-		// .obj simply re-defines the mesh in all the needed transformations. Because of that we can't simply compare
-		// mesh names to decide if they are different or not, we have to do a more extensive testing to determine the uniquness of a mesh.
-
-
-		// Find all the meshes with the same name
-		vector<weak_ptr<Mesh>> sameNameMeshes;
-		for (const auto& cachedMesh : m_meshes)
-		{
-			if (cachedMesh.lock()->GetResourceName() == mesh.lock()->GetResourceName() 
-				|| cachedMesh.lock()->GetResourceName().find(mesh.lock()->GetResourceName()) != string::npos)
-			{
-				sameNameMeshes.push_back(cachedMesh);
-			}
-		}
-
-		bool isUnique = true;
-		for (const auto& cachedMesh : sameNameMeshes)
-		{
-			// Vertex count matches
-			if (cachedMesh.lock()->GetVertexCount() != mesh.lock()->GetVertexCount())
-				continue;
-
-			vector<VertexPosTexTBN> meshVertices;
-			vector<unsigned int> meshIndices;
-			mesh.lock()->GetGeometry(&meshVertices, &meshIndices);
-
-			vector<VertexPosTexTBN> cachedVertices;
-			vector<unsigned int> cachedIndices;
-			cachedMesh.lock()->GetGeometry(&cachedVertices, &cachedIndices);
-
-			bool geometryMatches = true;
-			for (int i = 0; i < meshVertices.size(); i++)
-			{
-				if (meshVertices[i].position != cachedVertices[i].position)
-				{
-					geometryMatches = false;
-					break;
-				}
-			}
-
-			if (geometryMatches)
-			{
-				isUnique = false;
-				break;
-			}
-		}
-
-		// If the mesh is unique, give it a different name (in case other with the same name exist)
-		if (isUnique)
-		{
-			string num = sameNameMeshes.size() == 0 ? string("") : "_" + to_string(sameNameMeshes.size() + 1);
-			mesh.lock()->SetResourceName(mesh.lock()->GetResourceName() + num);
-		}
-		else
-		{
-			modelCached = &sameNameMeshes.front();
-		}
+		Renderable* renderable = gameObject.lock()->AddComponent<Renderable>().lock().get();
+		renderable->SetMesh(mesh);
 	}
 
 	float Model::ComputeNormalizeScale()
@@ -482,10 +400,76 @@ namespace Directus
 
 	void Model::ComputeMemoryUsage()
 	{
-		m_memoryUsageKB = 0;
+		m_memoryUsage = 0;
 		for (const auto& mesh : m_meshes)
 		{
-			m_memoryUsageKB += mesh.lock()->GetMemoryUsageKB();
+			m_memoryUsage += mesh.lock()->GetMemory();
 		}
+	}
+
+	bool Model::DetermineMeshUniqueness(Mesh* mesh)
+	{
+		// Problem:
+		// Some meshes can come from model formats like .obj
+		// Such formats contain pure geometry data, meaning that there is no transformation data.
+		// This in turn means that in order to have instances of the same mesh using different transforms,
+		// .obj simply re-defines the mesh in all the needed transformations using the exact same mesh name.
+		// This makes it easy to think that a mesh is already cached, hence ignore it and then see that the model is missing meshes.
+		// Solution:
+		// We simply go through are meshes, all meshes conflicting with or mesh (by name) are kept.
+		// We then compare our mesh against those meshes and to see if it's truly unique or not.
+		// If it is unique, we rename it to something that's also unique, so the engine doesn't discard it.
+
+		// Find all the meshes with the same name
+		vector<weak_ptr<Mesh>> sameNameMeshes;
+		for (const auto& cachedMesh : m_meshes)
+		{
+			if (cachedMesh.lock()->GetResourceName() == mesh->GetResourceName() 
+				|| cachedMesh.lock()->GetResourceName().find(mesh->GetResourceName()) != string::npos)
+			{
+				sameNameMeshes.push_back(cachedMesh);
+			}
+		}
+
+		bool isUnique = true;
+		for (const auto& cachedMesh : sameNameMeshes)
+		{
+			// Vertex count matches
+			if (cachedMesh.lock()->GetVertexCount() != mesh->GetVertexCount())
+				continue;
+
+			vector<VertexPosTexTBN> meshVertices;
+			vector<unsigned int> meshIndices;
+			mesh->GetGeometry(&meshVertices, &meshIndices);
+
+			vector<VertexPosTexTBN> cachedVertices;
+			vector<unsigned int> cachedIndices;
+			cachedMesh.lock()->GetGeometry(&cachedVertices, &cachedIndices);
+
+			bool geometryMatches = true;
+			for (unsigned int i = 0; i < meshVertices.size(); i++)
+			{
+				if (meshVertices[i].position != cachedVertices[i].position)
+				{
+					geometryMatches = false;
+					break;
+				}
+			}
+
+			if (geometryMatches)
+			{
+				isUnique = false;
+				break;
+			}
+		}
+
+		// If the mesh is unique, give it a different name (in case another with the same name exists)
+		if (isUnique)
+		{
+			string num = sameNameMeshes.empty() ? string("") : "_" + to_string(sameNameMeshes.size() + 1);
+			mesh->SetResourceName(mesh->GetResourceName() + num);
+		}
+
+		return !isUnique;
 	}
 }

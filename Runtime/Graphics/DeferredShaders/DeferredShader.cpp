@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,13 +19,13 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ==========================
+//= INCLUDES ================================
 #include "DeferredShader.h"
 #include "../../Logging/Log.h"
-#include "../../Components/Transform.h"
-#include "../../Components/Light.h"
+#include "../../Scene/Components/Transform.h"
+#include "../../Scene/Components/Light.h"
 #include "../../Core/Settings.h"
-//=====================================
+//===========================================
 
 //= NAMESPACES ================
 using namespace std;
@@ -50,10 +50,11 @@ namespace Directus
 
 		// load the vertex and the pixel shader
 		m_shader = make_shared<D3D11Shader>(m_graphics);
-		m_shader->Load(filePath);
+		m_shader->Compile(filePath);
 		m_shader->SetInputLayout(PositionTextureTBN);
 		m_shader->AddSampler(D3D11_FILTER_MIN_MAG_MIP_POINT, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_COMPARISON_ALWAYS);
 		m_shader->AddSampler(D3D11_FILTER_ANISOTROPIC, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_COMPARISON_ALWAYS);
+		m_shader->AddSampler(D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_COMPARISON_ALWAYS);
 
 		// Create matrix buffer
 		m_matrixBuffer = make_shared<D3D11ConstantBuffer>(m_graphics);
@@ -111,18 +112,17 @@ namespace Directus
 		buffer->cameraPosition = Vector4(camPos.x, camPos.y, camPos.z, 1.0f);
 
 		// Reset any light buffer values because the shader will still use them
+		buffer->dirLightColor = Vector4::Zero;
+		buffer->dirLightDirection = Vector4::Zero;
+		buffer->dirLightIntensity = Vector4::Zero;
 		for (int i = 0; i < maxLights; i++)
 		{
-			buffer->dirLightColor = Vector4::Zero;
-			buffer->dirLightDirection = Vector4::Zero;
-			buffer->dirLightIntensity = Vector4::Zero;
-			buffer->softShadows = (float)false;
-			buffer->pointLightPosition[maxLights] = Vector4::Zero;
-			buffer->pointLightColor[maxLights] = Vector4::Zero;
-			buffer->pointLightIntenRange[maxLights] = Vector4::Zero;
-			buffer->spotLightPosition[maxLights] = Vector4::Zero;
-			buffer->spotLightColor[maxLights] = Vector4::Zero;
-			buffer->spotLightIntenRangeAngle[maxLights] = Vector4::Zero;
+			buffer->pointLightPosition[i] = Vector4::Zero;
+			buffer->pointLightColor[i] = Vector4::Zero;
+			buffer->pointLightIntenRange[i] = Vector4::Zero;
+			buffer->spotLightPosition[i] = Vector4::Zero;
+			buffer->spotLightColor[i] = Vector4::Zero;
+			buffer->spotLightIntenRangeAngle[i] = Vector4::Zero;
 		}
 
 		// Fill with directional lights
@@ -136,7 +136,6 @@ namespace Directus
 			buffer->dirLightColor = light->GetColor();	
 			buffer->dirLightIntensity = Vector4(light->GetIntensity());
 			buffer->dirLightDirection = Vector4(direction.x, direction.y, direction.z, 0.0f);
-			buffer->softShadows = (light->GetShadowQuality() == Soft_Shadows) ? 1.0f : 0.0f;
 		}
 
 		// Fill with point lights
@@ -177,7 +176,7 @@ namespace Directus
 		buffer->nearPlane = camera->GetNearPlane();
 		buffer->farPlane = camera->GetFarPlane();
 		buffer->viewport = GET_RESOLUTION;
-		buffer->padding = 0.0f;
+		buffer->padding = Vector2::Zero;
 
 		// Unmap buffer
 		m_miscBuffer->Unmap();

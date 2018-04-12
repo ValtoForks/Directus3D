@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -29,9 +29,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../Logging/Log.h"
 #include "../FileSystem/FileSystem.h"
 #include "../Core/Context.h"
-#include "../EventSystem/EventSystem.h"
+#include "../Core/EventSystem.h"
 #include "../Core/Settings.h"
-
 //===========================================
 
 namespace Directus
@@ -78,8 +77,8 @@ namespace Directus
 		string major	= to_string(ANGELSCRIPT_VERSION).erase(1, 4);
 		string minor	= to_string(ANGELSCRIPT_VERSION).erase(0, 1).erase(2, 2);
 		string rev		= to_string(ANGELSCRIPT_VERSION).erase(0, 3);
-		Settings::g_versionAngelScript = major + "." + minor + "." + rev;
-		LOG_INFO("Scripting: AngelScript " + Settings::g_versionAngelScript);
+		Settings::Get().g_versionAngelScript = major + "." + minor + "." + rev;
+		LOG_INFO("Scripting: AngelScript " + Settings::Get().g_versionAngelScript);
 
 		return true;
 	}

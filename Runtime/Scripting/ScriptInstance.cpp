@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,7 +23,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "ScriptInstance.h"
 #include <angelscript.h>
 #include "Module.h"
-#include "../Core/Helper.h"
+#include "../Core/EngineDefs.h"
 #include "../FileSystem/FileSystem.h"
 #include "../Logging/Log.h"
 #include "../Scene/GameObject.h"

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,18 +19,16 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES =============================
+//= INCLUDES ================================
 #include "ShaderVariation.h"
-#include "../../Logging/Log.h"
-#include "../../IO/FileStream.h"
-#include "../../Core/Settings.h"
-#include "../../Components/Transform.h"
-#include "../../Components/Camera.h"
-#include "../../Components/Light.h"
 #include "../Material.h"
 #include "../D3D11/D3D11ConstantBuffer.h"
 #include "../D3D11/D3D11Shader.h"
-//=======================================
+#include "../../Logging/Log.h"
+#include "../../Core/Settings.h"
+#include "../../Scene/Components/Transform.h"
+#include "../../Scene/Components/Camera.h"
+//===========================================
 
 //= NAMESPACES ================
 using namespace std;
@@ -39,13 +37,14 @@ using namespace Directus::Math;
 
 namespace Directus
 {
-	ShaderVariation::ShaderVariation()
+	ShaderVariation::ShaderVariation(Context* context): IResource(context)
 	{
-		// Resource
-		RegisterResource(Resource_Shader);
+		//= IResource ======================
+		RegisterResource<ShaderVariation>();
+		//==================================
 
-		m_graphics = nullptr;
-		m_shaderFlags = 0;
+		m_graphics		= m_context->GetSubsystem<Graphics>();
+		m_shaderFlags	= 0;
 	}
 
 	ShaderVariation::~ShaderVariation()
@@ -53,49 +52,33 @@ namespace Directus
 
 	}
 
-	void ShaderVariation::Initialize(Context* context, unsigned long shaderFlags)
+	void ShaderVariation::Compile(const string& filePath, unsigned long shaderFlags)
 	{
-		m_context = context;
-		m_graphics = m_context->GetSubsystem<Graphics>();
-
-		// Save the properties of the material
 		m_shaderFlags = shaderFlags;
-
-		Compile(GetResourceFilePath());
-	}
-
-	bool ShaderVariation::LoadFromFile(const string& filePath)
-	{
-		unique_ptr<FileStream> file = make_unique<FileStream>(filePath, FileStreamMode_Read);
-		if (!file->IsOpen())
-			return false;
-
-		file->Read(&m_resourceName);
-		file->Read(&m_resourceFilePath);
-		file->Read(&m_shaderFlags);
-
-		return true;
-	}
-
-	bool ShaderVariation::SaveToFile(const string& filePath)
-	{
-		string savePath = filePath;
-
-		// Add shader extension if missing
-		if (FileSystem::GetExtensionFromFilePath(filePath) != SHADER_EXTENSION)
+		if (!m_graphics)
 		{
-			savePath += SHADER_EXTENSION;
+			LOG_INFO("GraphicsDevice is expired. Cant't compile shader");
+			return;
 		}
 
-		unique_ptr<FileStream> file = make_unique<FileStream>(savePath, FileStreamMode_Write);
-		if (!file->IsOpen())
-			return false;
+		// Load and compile the vertex and the pixel shader
+		m_D3D11Shader = make_shared<D3D11Shader>(m_graphics);
+		AddDefinesBasedOnMaterial(m_D3D11Shader);
+		m_D3D11Shader->Compile(filePath);
+		m_D3D11Shader->SetInputLayout(PositionTextureTBN);
+		m_D3D11Shader->AddSampler(D3D11_FILTER_ANISOTROPIC, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_COMPARISON_ALWAYS);
 
-		file->Write(GetResourceName());
-		file->Write(GetResourceFilePath());
-		file->Write(m_shaderFlags);
-	
-		return true;
+		// Matrix Buffer
+		m_perObjectBuffer = make_shared<D3D11ConstantBuffer>(m_graphics);
+		m_perObjectBuffer->Create(sizeof(PerObjectBufferType));
+
+		// Object Buffer
+		m_materialBuffer = make_shared<D3D11ConstantBuffer>(m_graphics);
+		m_materialBuffer->Create(sizeof(PerMaterialBufferType));
+
+		// Object Buffer
+		m_miscBuffer = make_shared<D3D11ConstantBuffer>(m_graphics);
+		m_miscBuffer->Create(sizeof(PerFrameBufferType));
 	}
 
 	void ShaderVariation::Set()
@@ -109,7 +92,7 @@ namespace Directus
 		m_D3D11Shader->Set();
 	}
 
-	void ShaderVariation::UpdatePerFrameBuffer(Light* directionalLight, Camera* camera)
+	void ShaderVariation::UpdatePerFrameBuffer(Camera* camera)
 	{
 		if (!m_D3D11Shader || !m_D3D11Shader->IsCompiled())
 		{
@@ -117,29 +100,21 @@ namespace Directus
 			return;
 		}
 
-		if (!directionalLight || !camera)
+		if (!camera)
 			return;
 
 		//= BUFFER UPDATE ======================================================================================================================
 		PerFrameBufferType* buffer = (PerFrameBufferType*)m_miscBuffer->Map();
 
-		buffer->viewport				= GET_RESOLUTION;
-		buffer->nearPlane				= camera->GetNearPlane();
-		buffer->farPlane				= camera->GetFarPlane();
-		buffer->mLightViewProjection[0] = directionalLight->GetViewMatrix() * directionalLight->GetOrthographicProjectionMatrix(0);
-		buffer->mLightViewProjection[1] = directionalLight->GetViewMatrix() * directionalLight->GetOrthographicProjectionMatrix(1);
-		buffer->mLightViewProjection[2] = directionalLight->GetViewMatrix() * directionalLight->GetOrthographicProjectionMatrix(2);
-		buffer->shadowSplits			= Vector4(directionalLight->GetShadowCascadeSplit(1), directionalLight->GetShadowCascadeSplit(2), 0, 0);
-		buffer->lightDir				= directionalLight->GetDirection();
-		buffer->shadowMapResolution		= (float)directionalLight->GetShadowCascadeResolution();
-		buffer->shadowMappingQuality	= directionalLight->GetShadowTypeAsFloat();
-		buffer->cameraPos				= camera->GetTransform()->GetPosition();
-
+		buffer->cameraPos	= camera->GetTransform()->GetPosition();
+		buffer->padding		= 0.0f;
+		buffer->viewport	= GET_RESOLUTION;
+		buffer->padding2	= Vector2::Zero;
+		
 		m_miscBuffer->Unmap();
 		//======================================================================================================================================
 
 		// Set to shader slot
-		m_miscBuffer->SetVS(0);
 		m_miscBuffer->SetPS(0);
 	}
 
@@ -184,11 +159,10 @@ namespace Directus
 		}
 
 		// Set to shader slot
-		m_materialBuffer->SetVS(1);
 		m_materialBuffer->SetPS(1);
 	}
 
-	void ShaderVariation::UpdatePerObjectBuffer(const Matrix& mWorld, const Matrix& mView, const Matrix& mProjection, bool receiveShadows)
+	void ShaderVariation::UpdatePerObjectBuffer(const Matrix& mWorld, const Matrix& mView, const Matrix& mProjection)
 	{
 		if (!m_D3D11Shader->IsCompiled())
 		{
@@ -205,7 +179,6 @@ namespace Directus
 		update = perObjectBufferCPU.mWorld					!= world ? true : update;
 		update = perObjectBufferCPU.mWorldView				!= worldView ? true : update;
 		update = perObjectBufferCPU.mWorldViewProjection	!= worldViewProjection ? true : update;
-		update = perObjectBufferCPU.receiveShadows			!= (float)receiveShadows ? true : update;
 
 		if (update)
 		{
@@ -215,8 +188,6 @@ namespace Directus
 			buffer->mWorld = perObjectBufferCPU.mWorld								= world;
 			buffer->mWorldView = perObjectBufferCPU.mWorldView						= worldView;
 			buffer->mWorldViewProjection = perObjectBufferCPU.mWorldViewProjection	= worldViewProjection;
-			buffer->receiveShadows = perObjectBufferCPU.receiveShadows				= (float)receiveShadows;
-			buffer->padding															= Vector3::Zero;
 
 			m_perObjectBuffer->Unmap();
 			//==============================================================================================
@@ -224,7 +195,6 @@ namespace Directus
 
 		// Set to shader slot
 		m_perObjectBuffer->SetVS(2);
-		m_perObjectBuffer->SetPS(2);
 	}
 
 	void ShaderVariation::UpdateTextures(const vector<ID3D11ShaderResourceView*>& textureArray)
@@ -249,7 +219,7 @@ namespace Directus
 		m_graphics->GetDeviceContext()->DrawIndexed(indexCount, 0, 0);
 	}
 
-	void ShaderVariation::AddDefinesBasedOnMaterial(shared_ptr<D3D11Shader> shader)
+	void ShaderVariation::AddDefinesBasedOnMaterial(const shared_ptr<D3D11Shader>& shader)
 	{
 		if (!shader)
 			return;
@@ -264,34 +234,5 @@ namespace Directus
 		shader->AddDefine("EMISSION_MAP",	HasEmissionTexture());
 		shader->AddDefine("MASK_MAP",		HasMaskTexture());
 		shader->AddDefine("CUBE_MAP",		HasCubeMapTexture());
-	}
-
-	void ShaderVariation::Compile(const string& filePath)
-	{
-		if (!m_graphics)
-		{
-			LOG_INFO("GraphicsDevice is expired. Cant't compile shader");
-			return;
-		}
-
-		// Load and compile the vertex and the pixel shader
-		m_D3D11Shader = make_shared<D3D11Shader>(m_graphics);
-		AddDefinesBasedOnMaterial(m_D3D11Shader);
-		m_D3D11Shader->Load(filePath);
-		m_D3D11Shader->SetInputLayout(PositionTextureTBN);
-		m_D3D11Shader->AddSampler(D3D11_FILTER_ANISOTROPIC, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_COMPARISON_ALWAYS);
-		m_D3D11Shader->AddSampler(D3D11_FILTER_MIN_MAG_MIP_LINEAR, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_COMPARISON_LESS_EQUAL);
-
-		// Matrix Buffer
-		m_perObjectBuffer = make_shared<D3D11ConstantBuffer>(m_graphics);
-		m_perObjectBuffer->Create(sizeof(PerObjectBufferType));
-
-		// Object Buffer
-		m_materialBuffer = make_shared<D3D11ConstantBuffer>(m_graphics);
-		m_materialBuffer->Create(sizeof(PerMaterialBufferType));
-
-		// Object Buffer
-		m_miscBuffer = make_shared<D3D11ConstantBuffer>(m_graphics);
-		m_miscBuffer->Create(sizeof(PerFrameBufferType));
 	}
 }

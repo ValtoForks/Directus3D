@@ -1,5 +1,5 @@
 ﻿/*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -64,8 +64,8 @@ namespace Directus
 		FT_Int minor;
 		FT_Int rev;
 		FT_Library_Version(m_library, &major, &minor, &rev);
-		Settings::g_versionFreeType = to_string(major) + "." + to_string(minor) + "." + to_string(rev);
-		LOG_INFO("FontImporter: FreeType " + Settings::g_versionFreeType);
+		Settings::Get().g_versionFreeType = to_string(major) + "." + to_string(minor) + "." + to_string(rev);
+		LOG_INFO("FontImporter: FreeType " + Settings::Get().g_versionFreeType);
 	}
 
 	// Glyph metrics:
@@ -100,7 +100,7 @@ namespace Directus
 	//              |------------- advanceX ----------->|
 
 
-	bool FontImporter::LoadFont(const string& filePath, int size, vector<unsigned char>& atlasBuffer, unsigned int& atlasWidth, unsigned int& atlasHeight, map<unsigned int, Glyph>& glyphs)
+	bool FontImporter::LoadFont(const string& filePath, int size, vector<std::byte>& atlasBuffer, unsigned int& atlasWidth, unsigned int& atlasHeight, map<unsigned int, Glyph>& glyphs)
 	{
 		FT_Face face;
 
@@ -155,14 +155,14 @@ namespace Directus
 				penY += rowHeight;
 			}
 
-			unsigned char* bits = bitmap->buffer;
+			auto bytes = (std::byte*)bitmap->buffer;
 			for (unsigned int row = 0; row < bitmap->rows; row++)
 			{
 				for (unsigned int col = 0; col < bitmap->width; col++)
 				{
 					int x = penX + col;
 					int y = penY + row;
-					atlasBuffer[y * atlasWidth + x] = bits[row * bitmap->pitch + col];
+					atlasBuffer[y * atlasWidth + x] = bytes[row * bitmap->pitch + col];
 				}
 			}
 

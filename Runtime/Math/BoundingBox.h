@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -35,7 +35,7 @@ namespace Directus
 	{
 		class Matrix;
 
-		class ENGINE_API BoundingBox
+		class ENGINE_CLASS BoundingBox
 		{
 		public:
 			// Construct with zero size.
@@ -83,6 +83,7 @@ namespace Directus
 
 			Vector3 min;
 			Vector3 max;
+			static const BoundingBox Zero;
 		};
 	}
 }

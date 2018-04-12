@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,27 +19,26 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ===========================
+//= INCLUDES =================================
 #include "GameObject.h"
 #include "Scene.h"
-#include "../Core/GUIDGenerator.h"
-#include "../IO/FileStream.h"
 #include "../Logging/Log.h"
-#include "../Components/AudioSource.h"
-#include "../Components/AudioListener.h"
-#include "../Components/Camera.h"
-#include "../Components/Collider.h"
-#include "../Components/Transform.h"
-#include "../Components/Constraint.h"
-#include "../Components/Light.h"
-#include "../Components/LineRenderer.h"
-#include "../Components/MeshFilter.h"
-#include "../Components/MeshRenderer.h"
-#include "../Components/RigidBody.h"
-#include "../Components/Skybox.h"
-#include "../Components/Script.h"
+#include "../IO/FileStream.h"
+#include "../Core/GUIDGenerator.h"
 #include "../FileSystem/FileSystem.h"
-//======================================
+#include "../Scene/Components/Camera.h"
+#include "../Scene/Components/Collider.h"
+#include "../Scene/Components/Transform.h"
+#include "../Scene/Components/Constraint.h"
+#include "../Scene/Components/Light.h"
+#include "../Scene/Components/LineRenderer.h"
+#include "../Scene/Components/Renderable.h"
+#include "../Scene/Components/RigidBody.h"
+#include "../Scene/Components/Skybox.h"
+#include "../Scene/Components/Script.h"
+#include "../Scene/Components/AudioSource.h"
+#include "../Scene/Components/AudioListener.h"
+//============================================
 
 //= NAMESPACES =====
 using namespace std;
@@ -49,15 +48,14 @@ namespace Directus
 {
 	GameObject::GameObject(Context* context)
 	{
-		m_context = context;
-		m_ID = GENERATE_GUID;
-		m_name = "GameObject";
-		m_isActive = true;
-		m_isPrefab = false;
-		m_hierarchyVisibility = true;
-		m_transform = nullptr;
-		m_meshFilter = nullptr;
-		m_meshRenderer = nullptr;
+		m_context				= context;
+		m_ID					= GENERATE_GUID;
+		m_name					= "GameObject";
+		m_isActive				= true;
+		m_isPrefab				= false;
+		m_hierarchyVisibility	= true;
+		m_transform				= nullptr;
+		m_renderable			= nullptr;
 	}
 
 	GameObject::~GameObject()
@@ -65,7 +63,7 @@ namespace Directus
 		// delete components
 		for (auto it = m_components.begin(); it != m_components.end(); )
 		{
-			(*it).second->Remove();
+			(*it).second->OnRemove();
 			(*it).second.reset();
 			it = m_components.erase(it);
 		}
@@ -87,16 +85,16 @@ namespace Directus
 		// call component Start()
 		for (auto const& component : m_components)
 		{
-			component.second->Start();
+			component.second->OnStart();
 		}
 	}
 
-	void GameObject::OnDisable()
+	void GameObject::Stop()
 	{
-		// call component OnDisable()
+		// call component Stop()
 		for (auto const& component : m_components)
 		{
-			component.second->OnDisable();
+			component.second->OnStop();
 		}
 	}
 
@@ -108,7 +106,7 @@ namespace Directus
 		// call component Update()
 		for (const auto& component : m_components)
 		{
-			component.second->Update();
+			component.second->OnUpdate();
 		}
 	}
 
@@ -167,7 +165,7 @@ namespace Directus
 		//=============================================
 
 		//= CHILDREN ==================================
-		vector<Transform*> children = GetTransform()->GetChildren();
+		vector<Transform*> children = GetTransform_PtrRaw()->GetChildren();
 
 		// 1st - children count
 		stream->Write((int)children.size());
@@ -181,9 +179,9 @@ namespace Directus
 		// 3rd - children
 		for (const auto& child : children)
 		{
-			if (child->GetGameObject())
+			if (child->GetGameObject_PtrRaw())
 			{
-				child->GetGameObject()->Serialize(stream);
+				child->GetGameObject_PtrRaw()->Serialize(stream);
 			}
 			else
 			{
@@ -241,7 +239,7 @@ namespace Directus
 		vector<std::weak_ptr<GameObject>> children;
 		for (int i = 0; i < childrenCount; i++)
 		{
-			std::weak_ptr<GameObject> child = scene->CreateGameObject();
+			std::weak_ptr<GameObject> child = scene->GameObject_CreateAdd();
 			child.lock()->SetID(stream->ReadUInt());
 			children.push_back(child);
 		}
@@ -249,7 +247,7 @@ namespace Directus
 		// 3rd - children
 		for (const auto& child : children)
 		{
-			child.lock()->Deserialize(stream, GetTransform());
+			child.lock()->Deserialize(stream, GetTransform_PtrRaw());
 		}
 		//=============================================
 
@@ -257,31 +255,36 @@ namespace Directus
 		{
 			m_transform->ResolveChildrenRecursively();
 		}
+
+		// Make the scene resolve
+		FIRE_EVENT(EVENT_SCENE_RESOLVE);
 	}
 
-	weak_ptr<Component> GameObject::AddComponent(ComponentType type)
+	weak_ptr<IComponent> GameObject::AddComponent(ComponentType type)
 	{
 		// This is the only hardcoded part regarding components. It's 
 		// one function but it would be nice if that get's automated too, somehow...
-		weak_ptr<Component> component;
+		weak_ptr<IComponent> component;
 		switch (type)
 		{
-		case ComponentType_AudioListener:	component = AddComponent<AudioListener>();	break;
-		case ComponentType_AudioSource:		component = AddComponent<AudioSource>();	break;
-		case ComponentType_Camera:			component = AddComponent<Camera>();			break;
-		case ComponentType_Collider:		component = AddComponent<Collider>();		break;
-		case ComponentType_Constraint:		component = AddComponent<Constraint>();		break;
-		case ComponentType_Light:			component = AddComponent<Light>();			break;
-		case ComponentType_LineRenderer:	component = AddComponent<LineRenderer>();	break;
-		case ComponentType_MeshFilter:		component = AddComponent<MeshFilter>();		break;
-		case ComponentType_MeshRenderer:	component = AddComponent<MeshRenderer>();	break;
-		case ComponentType_RigidBody:		component = AddComponent<RigidBody>();		break;
-		case ComponentType_Script:			component = AddComponent<Script>();			break;
-		case ComponentType_Skybox:			component = AddComponent<Skybox>();			break;
-		case ComponentType_Transform:		component = AddComponent<Transform>();		break;
-		case ComponentType_Unknown:														break;
-		default:																		break;
+			case ComponentType_AudioListener:	component = AddComponent<AudioListener>();	break;
+			case ComponentType_AudioSource:		component = AddComponent<AudioSource>();	break;
+			case ComponentType_Camera:			component = AddComponent<Camera>();			break;
+			case ComponentType_Collider:		component = AddComponent<Collider>();		break;
+			case ComponentType_Constraint:		component = AddComponent<Constraint>();		break;
+			case ComponentType_Light:			component = AddComponent<Light>();			break;
+			case ComponentType_LineRenderer:	component = AddComponent<LineRenderer>();	break;
+			case ComponentType_Renderable:	component = AddComponent<Renderable>();	break;
+			case ComponentType_RigidBody:		component = AddComponent<RigidBody>();		break;
+			case ComponentType_Script:			component = AddComponent<Script>();			break;
+			case ComponentType_Skybox:			component = AddComponent<Skybox>();			break;
+			case ComponentType_Transform:		component = AddComponent<Transform>();		break;
+			case ComponentType_Unknown:														break;
+			default:																		break;
 		}
+
+		// Make the scene resolve
+		FIRE_EVENT(EVENT_SCENE_RESOLVE);
 
 		return component;
 	}
@@ -293,7 +296,7 @@ namespace Directus
 			auto component = *it;
 			if (id == component.second->GetID())
 			{
-				component.second->Remove();
+				component.second->OnRemove();
 				component.second.reset();
 				it = m_components.erase(it);
 			}
@@ -302,5 +305,8 @@ namespace Directus
 				++it;
 			}
 		}
+
+		// Make the scene resolve
+		FIRE_EVENT(EVENT_SCENE_RESOLVE);
 	}
 }

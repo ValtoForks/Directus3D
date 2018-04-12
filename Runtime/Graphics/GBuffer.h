@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -37,8 +37,8 @@ namespace Directus
 		GBuffer_Target_Unknown,
 		GBuffer_Target_Albedo,
 		GBuffer_Target_Normal,
-		GBuffer_Target_Depth,
-		GBuffer_Target_Material
+		GBuffer_Target_Specular,
+		GBuffer_Target_Depth
 	};
 
 	struct GBuffer_Texture
@@ -63,6 +63,5 @@ namespace Directus
 
 		// Dependencies
 		Graphics* m_graphics;
-
 	};
 }

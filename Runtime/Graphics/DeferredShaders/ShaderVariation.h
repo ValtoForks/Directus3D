@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,7 +24,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES ============================
 #include <memory>
 #include "../D3D11/D3D11GraphicsDevice.h"
-#include "../../Resource/Resource.h"
+#include "../../Resource/IResource.h"
 #include "../../Math/Vector2.h"
 #include "../../Math/Matrix.h"
 //=======================================
@@ -53,23 +53,18 @@ namespace Directus
 	};
 
 
-	class ShaderVariation : public Resource
+	class ShaderVariation : public IResource
 	{
 	public:
-		ShaderVariation();
+		ShaderVariation(Context* context);
 		~ShaderVariation();
 
-		void Initialize(Context* context, unsigned long shaderFlags);
-
-		//= RESOURCE INTERFACE =================================
-		bool LoadFromFile(const std::string& filePath) override;
-		bool SaveToFile(const std::string& filePath) override;
-		//======================================================
+		void Compile(const std::string& filePath, unsigned long shaderFlags);
 
 		void Set();
-		void UpdatePerFrameBuffer(Light* directionalLight, Camera* camera);
+		void UpdatePerFrameBuffer(Camera* camera);
 		void UpdatePerMaterialBuffer(Material* material);
-		void UpdatePerObjectBuffer(const Math::Matrix& mWorld, const Math::Matrix& mView, const Math::Matrix& mProjection, bool receiveShadows);
+		void UpdatePerObjectBuffer(const Math::Matrix& mWorld, const Math::Matrix& mView, const Math::Matrix& mProjection);
 		void UpdateTextures(const std::vector<ID3D11ShaderResourceView*>& textureArray);
 		void Render(int indexCount);
 
@@ -85,9 +80,8 @@ namespace Directus
 		bool HasCubeMapTexture() { return m_shaderFlags & Variaton_Cubemap; }
 
 	private:
-		void AddDefinesBasedOnMaterial(std::shared_ptr<D3D11Shader> shader);
-		void Compile(const std::string& filePath);
-
+		void AddDefinesBasedOnMaterial(const std::shared_ptr<D3D11Shader>& shader);
+		
 		//= PROPERTIES =======
 		unsigned long m_shaderFlags;
 
@@ -99,18 +93,12 @@ namespace Directus
 		std::shared_ptr<D3D11Shader> m_D3D11Shader;
 
 		//= BUFFERS ===============================================
-		const static int cascades = 3;
 		struct PerFrameBufferType
 		{
-			Math::Vector2 viewport;
-			float nearPlane;
-			float farPlane;
-			Math::Matrix mLightViewProjection[cascades];
-			Math::Vector4 shadowSplits;
-			Math::Vector3 lightDir;
-			float shadowMapResolution;
-			float shadowMappingQuality;
 			Math::Vector3 cameraPos;
+			float padding;
+			Math::Vector2 viewport;
+			Math::Vector2 padding2;			
 		};
 
 		struct PerMaterialBufferType
@@ -133,8 +121,6 @@ namespace Directus
 			Math::Matrix mWorld;
 			Math::Matrix mWorldView;
 			Math::Matrix mWorldViewProjection;
-			float receiveShadows;
-			Math::Vector3 padding;
 		};
 		PerObjectBufferType perObjectBufferCPU;
 		//==========================================================

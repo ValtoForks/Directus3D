@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,8 +19,6 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#pragma once
-
 //= INCLUDES =========
 #include "Animation.h"
 //====================
@@ -31,11 +29,11 @@ using namespace std;
 
 namespace Directus
 {
-	Animation::Animation()
+	Animation::Animation(Context* context): IResource(context)
 	{
-		//= RESOURCE INTERFACE ================
-		RegisterResource(Resource_Animation);
-		//=====================================
+		//= IResource ================
+		RegisterResource<Animation>();
+		//============================
 
 		m_name = NOT_ASSIGNED;
 		m_duration = 0;

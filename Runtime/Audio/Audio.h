@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,20 +21,21 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= LINKING =========================
-#pragma comment(lib, "fmod64_vc.lib")
-//===================================
+//= INCLUDES =================
+#include "../Core/SubSystem.h"
+//============================
 
-//= INCLUDES =======================
-#include "../Core/Subsystem.h"
-#include "fmod.hpp"
-#include "../Components/Transform.h"
-#include "AudioClip.h"
-#include <memory>
-//==================================
+//= FORWARD DECLARATIONS =
+namespace FMOD
+{
+	class System;
+}
+//========================
 
 namespace Directus
 {
+	class Transform;
+
 	class Audio : public Subsystem
 	{
 	public:
@@ -46,25 +47,17 @@ namespace Directus
 		//========================
 
 		bool Update();
-
-		std::weak_ptr<AudioClip> CreateAudioClip();
+		FMOD::System* GetSystemFMOD() { return m_systemFMOD; }
 		void SetListenerTransform(Transform* transform);
 
 	private:
-		FMOD_RESULT m_result;
-		FMOD::System* m_fmodSystem;
+		void LogErrorFMOD(int error);
+
+		int m_resultFMOD;
+		FMOD::System* m_systemFMOD;
 		int m_maxChannels;
 		float m_distanceFactor;
 		bool m_initialized;
-
-		//= LISTENER =========
 		Transform* m_listener;
-		FMOD_VECTOR m_pos;
-		FMOD_VECTOR m_vel;
-		FMOD_VECTOR m_for;
-		FMOD_VECTOR m_up;
-		//====================
-
-		std::vector<std::shared_ptr<AudioClip>> m_audioHandles;
 	};
 }

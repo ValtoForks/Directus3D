@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -34,6 +34,7 @@ namespace Directus
 	D3D11IndexBuffer::D3D11IndexBuffer(D3D11GraphicsDevice* graphicsDevice) : m_graphics(graphicsDevice)
 	{
 		m_buffer = nullptr;
+		m_memoryUsage = 0;
 	}
 
 	D3D11IndexBuffer::~D3D11IndexBuffer()
@@ -65,6 +66,9 @@ namespace Directus
 		initData.pSysMem = indices.data();
 		initData.SysMemPitch = 0;
 		initData.SysMemSlicePitch = 0;
+
+		// Compute memory usage
+		m_memoryUsage = (unsigned int)(sizeof(unsigned int) * indices.size());
 
 		HRESULT result = m_graphics->GetDevice()->CreateBuffer(&bufferDesc, &initData, &m_buffer);
 		if FAILED(result)

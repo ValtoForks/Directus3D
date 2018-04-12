@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -18,8 +18,6 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-
-#pragma once
 
 //= INCLUDES =====================================
 #include "Font.h"
@@ -46,14 +44,13 @@ namespace Directus
 {
 	Graphics* graphics;
 
-	Font::Font(Context* context)
+	Font::Font(Context* context) : IResource(context)
 	{
-		m_context = context;
-		m_fontSize = 12;
-		m_charMaxWidth = 0;
+		m_fontSize		= 12;
+		m_charMaxWidth	= 0;
 		m_charMaxHeight = 0;
-		m_fontColor = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
-		graphics = m_context->GetSubsystem<Graphics>();
+		m_fontColor		= Vector4(0.0f, 0.0f, 0.0f, 1.0f);
+		graphics		= m_context->GetSubsystem<Graphics>();
 	}
 
 	Font::~Font()
@@ -73,7 +70,7 @@ namespace Directus
 		Stopwatch timer;
 
 		// Load font
-		vector<unsigned char> atlasBuffer;
+		vector<std::byte> atlasBuffer;
 		unsigned int texAtlasWidth = 0;
 		unsigned int texAtlasHeight = 0;
 		if (!m_context->GetSubsystem<ResourceManager>()->GetFontImporter().lock()->LoadFont(filePath, m_fontSize, atlasBuffer, texAtlasWidth, texAtlasHeight, m_glyphs))
@@ -137,9 +134,8 @@ namespace Directus
 		m_vertices.shrink_to_fit();
 
 		// Draw each letter onto a quad.
-		for (int i = 0; i < m_currentText.size(); i++)
+		for (char textChar : m_currentText)
 		{
-			char textChar = m_currentText[i];
 			auto glyph = m_glyphs[textChar];
 
 			if (textChar == ASCII_TAB)
@@ -184,7 +180,7 @@ namespace Directus
 			m_indices.clear();
 			m_indices.shrink_to_fit();
 			m_indices.reserve(m_vertices.size());
-			for (int i = 0; i < m_vertices.size(); i++)
+			for (unsigned int i = 0; i < m_vertices.size(); i++)
 			{
 				m_indices.emplace_back(i);
 			}

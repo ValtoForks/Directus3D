@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,20 +21,20 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES =======================
+//= INCLUDES =====================
 #include <map>
 #include "Scene.h"
-#include "../Components/Component.h"
+#include "Components/IComponent.h"
 #include "../Core/Context.h"
-//==================================
+#include "../Core/EventSystem.h"
+//================================
 
 namespace Directus
 {
 	class Transform;
-	class MeshFilter;
-	class MeshRenderer;
+	class Renderable;
 
-	class ENGINE_API GameObject
+	class ENGINE_CLASS GameObject : public std::enable_shared_from_this<GameObject>
 	{
 	public:
 		GameObject(Context* context);
@@ -42,9 +42,11 @@ namespace Directus
 
 		void Initialize(Transform* transform);
 
+		//============
 		void Start();
-		void OnDisable();
+		void Stop();
 		void Update();
+		//============
 
 		bool SaveAsPrefab(const std::string& filePath);
 		bool LoadFromPrefab(const std::string& filePath);
@@ -52,7 +54,7 @@ namespace Directus
 		void Serialize(FileStream* stream);
 		void Deserialize(FileStream* stream, Transform* parent);
 
-		//= PROPERTIES =========================================================================================
+		//= PROPERTIES =======================================================================================
 		const std::string& GetName() { return m_name; }
 		void SetName(const std::string& name) { m_name = name; }
 
@@ -64,54 +66,51 @@ namespace Directus
 
 		bool IsVisibleInHierarchy() { return m_hierarchyVisibility; }
 		void SetHierarchyVisibility(bool hierarchyVisibility) { m_hierarchyVisibility = hierarchyVisibility; }
-		//======================================================================================================
+		//====================================================================================================
 
 		//= COMPONENTS =========================================================================================
 		// Adds a component of type T
 		template <class T>
 		std::weak_ptr<T> AddComponent()
 		{
-			ComponentType type = Component::ToComponentType<T>();
+			ComponentType type = IComponent::Type_To_Enum<T>();
 
 			// Return component in case it already exists while ignoring Script components (they can exist multiple times)
 			if (HasComponent(type) && type != ComponentType_Script)
 				return std::static_pointer_cast<T>(GetComponent<T>().lock());
 
 			// Add component
-			auto newComponent = std::make_shared<T>();
+			auto newComponent = std::make_shared<T>(
+				m_context, 
+				m_context->GetSubsystem<Scene>()->GetGameObjectByID(GetID()).lock().get(),
+				GetTransform_PtrRaw()
+				);
 			m_components.insert(make_pair(type, newComponent));
+			newComponent->SetType(IComponent::Type_To_Enum<T>());
 
 			// Register component
-			newComponent->Register
-			(
-				m_context->GetSubsystem<Scene>()->GetGameObjectByID(GetID()).lock().get(),
-				GetTransform(),
-				m_context,
-				type
-			);
-			newComponent->Initialize();
+			newComponent->OnInitialize();
 
 			// Caching of rendering performance critical components
-			if (newComponent->GetType() == ComponentType_MeshFilter)
+			if (newComponent->GetType() == ComponentType_Renderable)
 			{
-				m_meshFilter = (MeshFilter*)newComponent.get();
+				m_renderable = (Renderable*)newComponent.get();
 			}
-			else if (newComponent->GetType() == ComponentType_MeshRenderer)
-			{
-				m_meshRenderer = (MeshRenderer*)newComponent.get();
-			}
+
+			// Make the scene resolve
+			FIRE_EVENT(EVENT_SCENE_RESOLVE);
 
 			// Return it as a component of the requested type
 			return newComponent;
 		}
 
-		std::weak_ptr<Component> AddComponent(ComponentType type);
+		std::weak_ptr<IComponent> AddComponent(ComponentType type);
 
 		// Returns a component of type T (if it exists)
 		template <class T>
 		std::weak_ptr<T> GetComponent()
 		{
-			ComponentType type = Component::ToComponentType<T>();
+			ComponentType type = IComponent::Type_To_Enum<T>();
 
 			if (m_components.find(type) == m_components.end())
 				return std::weak_ptr<T>();
@@ -123,7 +122,7 @@ namespace Directus
 		template <class T>
 		std::vector<std::weak_ptr<T>> GetComponents()
 		{
-			ComponentType type = Component::ToComponentType<T>();
+			ComponentType type = IComponent::Type_To_Enum<T>();
 
 			std::vector<std::weak_ptr<T>> components;
 			for (const auto& component : m_components)
@@ -131,7 +130,7 @@ namespace Directus
 				if (type != component.second->GetType())
 					continue;
 
-				components.push_back(std::static_pointer_cast<T>(component.second));
+				components.emplace_back(std::static_pointer_cast<T>(component.second));
 			}
 
 			return components;
@@ -141,13 +140,13 @@ namespace Directus
 		bool HasComponent(ComponentType type) { return m_components.find(type) != m_components.end(); }
 		// Checks if a component of type T exists
 		template <class T>
-		bool HasComponent() { return HasComponent(Component::ToComponentType<T>()); }
+		bool HasComponent() { return HasComponent(IComponent::Type_To_Enum<T>()); }
 
 		// Removes a component of type T (if it exists)
 		template <class T>
 		void RemoveComponent()
 		{
-			ComponentType type = Component::ToComponentType<T>();
+			ComponentType type = IComponent::Type_To_Enum<T>();
 
 			if (m_components.find(type) == m_components.end())
 				return;
@@ -155,9 +154,9 @@ namespace Directus
 			for (auto it = m_components.begin(); it != m_components.end(); )
 			{
 				auto component = *it;
-                                if (type == component.second->GetType())
+				if (type == component.second->GetType())
 				{
-					component.second->Remove();
+					component.second->OnRemove();
 					component.second.reset();
 					it = m_components.erase(it);
 				}
@@ -166,15 +165,18 @@ namespace Directus
 					++it;
 				}
 			}
+
+			// Make the scene resolve
+			FIRE_EVENT(EVENT_SCENE_RESOLVE);
 		}
 
 		void RemoveComponentByID(unsigned int id);
 		//======================================================================================================
 
-		// Direct access to performance critical components (not safe)
-		Transform* GetTransform() { return m_transform; }
-		MeshFilter* GetMeshFilter() { return m_meshFilter; }
-		MeshRenderer* GetMeshRenderer() { return m_meshRenderer; }
+		// Direct access for performance critical usage (not safe)
+		Transform* GetTransform_PtrRaw() { return m_transform; }
+		Renderable* GetRenderable_PtrRaw() { return m_renderable; }
+		std::shared_ptr<GameObject> GetPtrShared() { return shared_from_this(); }
 
 	private:
 		unsigned int m_ID;
@@ -182,12 +184,11 @@ namespace Directus
 		bool m_isActive;
 		bool m_isPrefab;
 		bool m_hierarchyVisibility;
-		std::multimap<ComponentType, std::shared_ptr<Component>> m_components;
+		std::multimap<ComponentType, std::shared_ptr<IComponent>> m_components;
 		Context* m_context;
 
 		// Caching of performance critical components
-		Transform* m_transform; // Updating performance - never null
-		MeshFilter* m_meshFilter; // Rendering performance - can be null
-		MeshRenderer* m_meshRenderer; // Rendering performance - can be null
+		Transform* m_transform;
+		Renderable* m_renderable;
 	};
 }

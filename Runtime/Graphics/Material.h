@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,15 +21,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ====================
+//= INCLUDES =====================
+#include <utility>
 #include <vector>
 #include <memory>
 #include <map>
 #include "Texture.h"
-#include "../Resource/Resource.h"
+#include "../Resource/IResource.h"
 #include "../Math/Vector2.h"
 #include "Rectangle.h"
-//===============================
+//================================
 
 namespace Directus
 {
@@ -37,44 +38,38 @@ namespace Directus
 	class ShaderPool;
 	class TexturePool;
 
-	enum ShadingMode
-	{
-		Shading_PBR,
-		Shading_Unlit,
-		Shading_Skybox
-	};
-
-	enum MaterialType
-	{
-		Material_Imported,
-		Material_Basic,
-		Material_Skybox
-	};
-
-	class ENGINE_API Material : public Resource
+	class ENGINE_CLASS Material : public IResource
 	{
 	public:
+		enum ShadingMode
+		{
+			Shading_PBR,
+			Shading_Unlit,
+			Shading_Skybox
+		};
+
 		Material(Context* context);
 		~Material();
 
-		//= RESOURCE ===========================================
+		//= IResource ==================================================
 		bool LoadFromFile(const std::string& filePath) override;
 		bool SaveToFile(const std::string& filePath) override;
-		//======================================================
+		unsigned int GetMemory() override;
+		//==============================================================
 
-		//= TEXTURES =============================================
-		void SetTexture(std::weak_ptr<Texture> texture);
+		//= TEXTURES =====================================================================
+		void SetTexture(const std::weak_ptr<Texture>& textureWeak, bool autoCache = true);
 		std::weak_ptr<Texture> GetTextureByType(TextureType type);
 		bool HasTextureOfType(TextureType type);
 		bool HasTexture(const std::string& path);
 		std::string GetTexturePathByType(TextureType type);
 		std::vector<std::string> GetTexturePaths();
-		//========================================================
+		//================================================================================
 
 		//= SHADER ===========================================================================
 		void AcquireShader();
 		std::weak_ptr<ShaderVariation> FindMatchingShader(unsigned long shaderFlags);
-		std::weak_ptr<ShaderVariation> CreateShaderBasedOnMaterial(unsigned long shaderFlags);
+		std::weak_ptr<ShaderVariation> GetOrCreateShader(unsigned long shaderFlags);
 		std::weak_ptr<ShaderVariation> GetShader() { return m_shader; }
 		bool HasShader() { return GetShader().expired() ? false : true; }
 		void** GetShaderResource(TextureType type);
@@ -109,16 +104,18 @@ namespace Directus
 		float GetHeightMultiplier() { return m_heightMultiplier; }
 		void SetHeightMultiplier(float height) { m_heightMultiplier = height; }
 
+		void SetMultiplier(TextureType type, float value);
+
 		ShadingMode GetShadingMode() { return m_shadingMode; }
 		void SetShadingMode(ShadingMode shadingMode) { m_shadingMode = shadingMode; }
 
-		Math::Vector4&  GetColorAlbedo() { return m_colorAlbedo; }
+		const Math::Vector4& GetColorAlbedo() { return m_colorAlbedo; }
 		void SetColorAlbedo(const Math::Vector4& color) { m_colorAlbedo = color; }
 
-		Math::Vector2&  GetTiling() { return m_uvTiling; }
+		const Math::Vector2& GetTiling() { return m_uvTiling; }
 		void SetTiling(const Math::Vector2& tiling) { m_uvTiling = tiling; }
 
-		Math::Vector2& GetOffset() { return m_uvOffset; }
+		const Math::Vector2& GetOffset() { return m_uvOffset; }
 		void SetOffset(const Math::Vector2& offset) { m_uvOffset = offset; }
 
 		bool IsEditable() { return m_isEditable; }
@@ -132,7 +129,7 @@ namespace Directus
 
 		struct TexInfo
 		{
-			TexInfo(std::weak_ptr<Texture> texture, std::string name, std::string path)
+			TexInfo(const std::weak_ptr<Texture>& texture, const std::string& name, const std::string& path)
 			{
 				this->texture = texture;
 				this->name	= name;
@@ -146,22 +143,18 @@ namespace Directus
 		// <tex_type, <tex,	tex_path>>
 		std::map<TextureType, TexInfo> m_textures;
 
-		unsigned int m_modelID;
-		CullMode m_cullMode;
+		unsigned int m_modelID;	
 		float m_opacity;
 		bool m_alphaBlending;
+		CullMode m_cullMode;
+		ShadingMode m_shadingMode;
 		Math::Vector4 m_colorAlbedo;
 		float m_roughnessMultiplier;
 		float m_metallicMultiplier;
 		float m_normalMultiplier;
 		float m_heightMultiplier;
 		Math::Vector2 m_uvTiling;
-		Math::Vector2 m_uvOffset;
-		ShadingMode m_shadingMode;
+		Math::Vector2 m_uvOffset;	
 		bool m_isEditable;
-
-		//= DEPENDENCIES ==
-		Context* m_context;
-		//=================
 	};
 }

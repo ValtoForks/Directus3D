@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,13 +21,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ====================
+//= INCLUDES =====================
 #include <memory>
 #include <vector>
-#include "../Resource/Resource.h"
+#include "../Resource/IResource.h"
 #include "../Math/BoundingBox.h"
 #include "Texture.h"
-//===============================
+//================================
 
 namespace Directus
 {
@@ -43,35 +43,35 @@ namespace Directus
 		class BoundingBox;
 	}
 
-	class ENGINE_API Model : public Resource
+	class ENGINE_CLASS Model : public IResource
 	{
 	public:
 		Model(Context* context);
 		~Model();
 
-		//= RESOURCE INTERFACE =============================================
+		//= RESOURCE INTERFACE ====================================
 		bool LoadFromFile(const std::string& filePath) override;
 		bool SaveToFile(const std::string& filePath) override;
-		unsigned int GetMemoryUsageKB() override { return m_memoryUsageKB; }
-		//==================================================================
+		unsigned int GetMemory() override { return m_memoryUsage; }
+		//=========================================================
 
 		// Sets the GameObject that represents this model in the scene
-		void SetRootGameObject(std::weak_ptr<GameObject> gameObj) { m_rootGameObj = gameObj; }
+		void SetRootGameObject(const std::weak_ptr<GameObject>& gameObj) { m_rootGameObj = gameObj; }
 
 		// Adds a mesh by creating it from scratch
-		void AddMesh(const std::string& name, std::vector<VertexPosTexTBN>& vertices, std::vector<unsigned int>& indices, std::weak_ptr<GameObject> gameObject);
+		void AddMesh(const std::string& name, std::vector<VertexPosTexTBN>& vertices, std::vector<unsigned int>& indices, const std::weak_ptr<GameObject>& gameObject);
 
 		// Adds a new mesh
-		void AddMesh(std::weak_ptr<Mesh> mesh, std::weak_ptr<GameObject> gameObject);
+		void AddMesh(const std::weak_ptr<Mesh>& mesh, const std::weak_ptr<GameObject>& gameObject, bool autoCache = true);
 
 		// Adds a new material
-		void AddMaterial(std::weak_ptr<Material> material, std::weak_ptr<GameObject> gameObject);
+		void AddMaterial(const std::weak_ptr<Material>& material, const std::weak_ptr<GameObject>& gameObject, bool autoCache = true);
 
 		// Adds a new animation
 		std::weak_ptr<Animation> AddAnimation(std::weak_ptr<Animation> animation);
 
 		// Adds a texture (the material that uses this texture must be passed as well)
-		void AddTexture(const std::weak_ptr<Material> material, TextureType textureType, const std::string& texturePath);
+		void AddTexture(const std::weak_ptr<Material>& material, TextureType textureType, const std::string& filePath);
 
 		std::weak_ptr<Mesh> GetMeshByName(const std::string& name);
 
@@ -92,8 +92,7 @@ namespace Directus
 		bool LoadFromEngineFormat(const std::string& filePath);
 		bool LoadFromForeignFormat(const std::string& filePath);
 
-		void AddStandardComponents(std::weak_ptr<GameObject> gameObject, std::weak_ptr<Mesh> mesh);
-		void DetermineMeshUniqueness(std::weak_ptr<Mesh> mesh, std::weak_ptr<Mesh>* modelCached);
+		void AddStandardComponents(const std::weak_ptr<GameObject>& gameObject, const std::weak_ptr<Mesh>& mesh);
 
 		// Scale relate functions
 		float ComputeNormalizeScale();
@@ -101,6 +100,7 @@ namespace Directus
 
 		// Misc
 		void ComputeMemoryUsage();
+		bool DetermineMeshUniqueness(Mesh* mesh);
 
 		// The root GameObject that represents this model in the scene
 		std::weak_ptr<GameObject> m_rootGameObj;
@@ -121,6 +121,6 @@ namespace Directus
 		float m_normalizedScale;
 		bool m_isAnimated;
 		ResourceManager* m_resourceManager;
-		unsigned int m_memoryUsageKB;
+		unsigned int m_memoryUsage;
 	};
 }

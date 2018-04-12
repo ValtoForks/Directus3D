@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES =============================
+//= INCLUDES ================================
 #include "ModelImporter.h"
 #include <vector>
 #include <future>
@@ -27,20 +27,21 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/version.h>
-#include "../../Scene/Scene.h"
-#include "../../Scene/GameObject.h"
+#include "AssimpHelper.h"
 #include "../../Core/Context.h"
-#include "../../Components/Transform.h"
+#include "../../Core/Settings.h"
+#include "../../Core/EventSystem.h"
 #include "../../FileSystem/FileSystem.h"
 #include "../../Logging/Log.h"
 #include "../../Graphics/Model.h"
 #include "../../Graphics/Animation.h"
 #include "../../Graphics/Mesh.h"
-#include "../../EventSystem/EventSystem.h"
 #include "../../Graphics/Material.h"
-#include "AssimpHelper.h"
-#include "../../Core/Settings.h"
-//========================================
+#include "../../Scene/Scene.h"
+#include "../../Scene/Components/Transform.h"
+#include "../../Scene/GameObject.h"
+#include "../ProgressReport.h"
+//===========================================
 
 //= NAMESPACES ================
 using namespace std;
@@ -75,16 +76,14 @@ namespace Directus
 	ModelImporter::ModelImporter(Context* context)
 	{
 		m_context = context;
-		m_isLoading = false;
 		m_model = nullptr;
-		ClearProgressStatus();
 
 		// Log version
 		int major = aiGetVersionMajor();
 		int minor = aiGetVersionMinor();
 		int rev = aiGetVersionRevision();
-		Settings::g_versionAssimp = to_string(major) + "." + to_string(minor) + "." + to_string(rev);
-		LOG_INFO("ModelImporter: Assimp " + Settings::g_versionAssimp);
+		Settings::Get().g_versionAssimp = to_string(major) + "." + to_string(minor) + "." + to_string(rev);
+		LOG_INFO("ModelImporter: Assimp " + Settings::Get().g_versionAssimp);
 	}
 
 	ModelImporter::~ModelImporter()
@@ -102,7 +101,6 @@ namespace Directus
 
 		m_model = model;
 		m_modelPath = filePath;
-		m_isLoading = true;
 
 		// Set up an Assimp importer
 		Assimp::Importer importer;
@@ -112,16 +110,17 @@ namespace Directus
 		importer.SetPropertyInteger(AI_CONFIG_PP_CT_MAX_SMOOTHING_ANGLE, normalSmoothAngle); // Default is 45, max is 175
 
 		// Read the 3D model file from disk
-		m_progressStatus = "Loading \"" + FileSystem::GetFileNameFromFilePath(filePath) + "\" from disk...";
+		ProgressReport::Get().Reset(g_progress_ModelImporter);
+		ProgressReport::Get().SetStatus(g_progress_ModelImporter, "Loading \"" + FileSystem::GetFileNameFromFilePath(filePath) + "\" from disk...");
 		const aiScene* scene = importer.ReadFile(m_modelPath, ppsteps);
 		if (!scene)
 		{
 			LOG_ERROR("ModelImporter: Failed to load \"" + model->GetResourceName() + "\". " + importer.GetErrorString());
-			m_isLoading = false;
+			ProgressReport::Get().SetIsLoading(g_progress_ModelImporter, false);
 			return false;
 		}
 
-		// Map all the nodes as GameObjects while mentaining hierarchical relationships
+		// Map all the nodes as GameObjects while maintaining hierarchical relationships
 		// as well as their properties (meshes, materials, textures etc.).
 		ReadNodeHierarchy(model, scene, scene->mRootNode);
 
@@ -132,8 +131,7 @@ namespace Directus
 		importer.FreeScene();
 
 		// Stats
-		m_isLoading = false;
-		ClearProgressStatus();
+		ProgressReport::Get().SetIsLoading(g_progress_ModelImporter, false);
 
 		FIRE_EVENT(EVENT_MODEL_LOADED);
 
@@ -148,13 +146,13 @@ namespace Directus
 		// Is this the root node?
 		if (!assimpNode->mParent || newNode.expired())
 		{
-			newNode = scene->CreateGameObject();
+			newNode = scene->GameObject_CreateAdd();
 			model->SetRootGameObject(newNode.lock());
 
-			CalculateNodeCount(assimpNode, m_jobsDone);
+			int jobCount;
+			ComputeNodeCount(assimpNode, &jobCount);
+			ProgressReport::Get().SetJobCount(g_progress_ModelImporter, jobCount);
 		}
-
-		m_jobsTotal++;
 
 		//= GET NODE NAME ============================================================
 		// Note: In case this is the root node, aiNode.mName will be "RootNode". 
@@ -164,20 +162,20 @@ namespace Directus
 			string name = assimpNode->mName.C_Str();
 			newNode.lock()->SetName(name);
 
-			m_progressStatus = "Processing: " + name;
+			ProgressReport::Get().SetStatus(g_progress_ModelImporter, "Processing: " + name);
 		}
 		else
 		{
 			string name = FileSystem::GetFileNameNoExtensionFromFilePath(m_modelPath);
 			newNode.lock()->SetName(name);
 
-			m_progressStatus = "Processing: " + name;
+			ProgressReport::Get().SetStatus(g_progress_ModelImporter, "Processing: " + name);
 		}
 		//============================================================================
 
 		// Set the transform of parentNode as the parent of the newNode's transform
-		Transform* parentTrans = !parentNode.expired() ? parentNode.lock()->GetTransform() : nullptr;
-		newNode.lock()->GetTransform()->SetParent(parentTrans);
+		Transform* parentTrans = !parentNode.expired() ? parentNode.lock()->GetTransform_PtrRaw() : nullptr;
+		newNode.lock()->GetTransform_PtrRaw()->SetParent(parentTrans);
 
 		// Set the transformation matrix of the Assimp node to the new node
 		AssimpHelper::SetGameObjectTransform(newNode, assimpNode);
@@ -192,8 +190,8 @@ namespace Directus
 			// if this node has many meshes, then assign a new gameobject for each one of them
 			if (assimpNode->mNumMeshes > 1)
 			{
-				gameobject = scene->CreateGameObject(); // create
-				gameobject.lock()->GetTransform()->SetParent(newNode.lock()->GetTransform()); // set parent
+				gameobject = scene->GameObject_CreateAdd(); // create
+				gameobject.lock()->GetTransform_PtrRaw()->SetParent(newNode.lock()->GetTransform_PtrRaw()); // set parent
 				name += "_" + to_string(i + 1); // set name
 			}
 
@@ -207,9 +205,11 @@ namespace Directus
 		// Process children
 		for (unsigned int i = 0; i < assimpNode->mNumChildren; i++)
 		{
-			weak_ptr<GameObject> child = scene->CreateGameObject();
+			weak_ptr<GameObject> child = scene->GameObject_CreateAdd();
 			ReadNodeHierarchy(model, assimpScene, assimpNode->mChildren[i], newNode, child);
 		}
+
+		ProgressReport::Get().JobDone(g_progress_ModelImporter);
 	}
 
 	void ModelImporter::ReadAnimations(Model* model, const aiScene* scene)
@@ -217,7 +217,7 @@ namespace Directus
 		for (unsigned int i = 0; i < scene->mNumAnimations; i++)
 		{
 			aiAnimation* assimpAnimation = scene->mAnimations[i];
-			shared_ptr<Animation> animation = make_shared<Animation>();
+			shared_ptr<Animation> animation = make_shared<Animation>(m_context);
 
 			// Basic properties
 			animation->SetName(assimpAnimation->mName.C_Str());
@@ -303,7 +303,7 @@ namespace Directus
 		//==============================================================================
 	}
 
-	void ModelImporter::LoadAiMeshIndices(aiMesh* assimpMesh, shared_ptr<Mesh> mesh)
+	void ModelImporter::LoadAiMeshIndices(aiMesh* assimpMesh, const shared_ptr<Mesh>& mesh)
 	{
 		// Get indices by iterating through each face of the mesh.
 		for (unsigned int faceIndex = 0; faceIndex < assimpMesh->mNumFaces; faceIndex++)
@@ -320,7 +320,7 @@ namespace Directus
 		}
 	}
 
-	void ModelImporter::LoadAiMeshVertices(aiMesh* assimpMesh, shared_ptr<Mesh> mesh)
+	void ModelImporter::LoadAiMeshVertices(aiMesh* assimpMesh, const shared_ptr<Mesh>& mesh)
 	{
 		Vector3 position;
 		Vector2 uv;
@@ -363,10 +363,10 @@ namespace Directus
 			mesh->GetVertices().emplace_back(position, uv, normal, tangent, bitangent);
 
 			// reset the vertex for use in the next loop
-			uv = Vector2::Zero;
-			normal = Vector3::Zero;
-			tangent = Vector3::Zero;
-			bitangent = Vector3::Zero;
+			uv			= Vector2::Zero;
+			normal		= Vector3::Zero;
+			tangent		= Vector3::Zero;
+			bitangent	= Vector3::Zero;
 		}
 	}
 
@@ -374,19 +374,19 @@ namespace Directus
 	{
 		if (!model || !assimpMaterial)
 		{
-			LOG_WARNING("ModelImporter: Can't convert AiMaterial to Material, one of them is null.");
+			LOG_WARNING("ModelImporter::AiMaterialToMaterial(): One of the provided materials is null, can't execute function");
 			return nullptr;
 		}
 
 		auto material = make_shared<Material>(m_context);
 
-		//= NAME ============================================
+		// NAME
 		aiString name;
 		aiGetMaterialString(assimpMaterial, AI_MATKEY_NAME, &name);
 		material->SetResourceName(name.C_Str());
 		material->SetModelID(GUIDGenerator::ToUnsignedInt(model->GetResourceName()));
 
-		//= CullMode ===================================================
+		// CULL MODE
 		// Specifies whether meshes using this material must be rendered 
 		// without back face CullMode. 0 for false, !0 for true.
 		bool isTwoSided = false;
@@ -396,89 +396,49 @@ namespace Directus
 			material->SetCullMode(CullNone);
 		}
 
-		//= DIFFUSE COLOR ===================================================
+		// DIFFUSE COLOR
 		aiColor4D colorDiffuse(1.0f, 1.0f, 1.0f, 1.0f);
 		aiGetMaterialColor(assimpMaterial, AI_MATKEY_COLOR_DIFFUSE, &colorDiffuse);
 		material->SetColorAlbedo(AssimpHelper::ToVector4(colorDiffuse));
 
-		//= OPACITY ==============================================
+		// OPACITY
 		aiColor4D opacity(1.0f, 1.0f, 1.0f, 1.0f);
 		aiGetMaterialColor(assimpMaterial, AI_MATKEY_OPACITY, &opacity);
 		material->SetOpacity(opacity.r);
 
-		//= ALBEDO TEXTURE =============================================================================================================
-		aiString texturePath;
-		if (assimpMaterial->GetTextureCount(aiTextureType_DIFFUSE) > 0)
+		// TEXTURES
+		auto LoadMatTex = [this, &model, &assimpMaterial, &material](aiTextureType assimpTex, TextureType engineTex)
 		{
-			if (assimpMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &texturePath, nullptr, nullptr, nullptr, nullptr, nullptr) == AI_SUCCESS)
+			aiString texturePath;
+			if (assimpMaterial->GetTextureCount(assimpTex) > 0)
 			{
-				model->AddTexture(material, TextureType_Albedo, ValidateTexturePath(texturePath.data));
-				// FIX: materials that have a diffuse texture should not be tinted black/grey
-				material->SetColorAlbedo(Vector4(1.0f, 1.0f, 1.0f, 1.0f));
-			}
-		}
+				if (assimpMaterial->GetTexture(assimpTex, 0, &texturePath, nullptr, nullptr, nullptr, nullptr, nullptr) == AI_SUCCESS)
+				{
+					auto deducedPath = ValidateTexturePath(texturePath.data);
+					if (FileSystem::IsSupportedImageFile(deducedPath))
+					{
+						model->AddTexture(material, engineTex, ValidateTexturePath(texturePath.data));
+					}
 
-		//= SPECULAR (used as ROUGHNESS) TEXTURE =========================================================================================
-		if (assimpMaterial->GetTextureCount(aiTextureType_SHININESS) > 0)
-		{
-			if (assimpMaterial->GetTexture(aiTextureType_SHININESS, 0, &texturePath, nullptr, nullptr, nullptr, nullptr, nullptr) == AI_SUCCESS)
-			{
-				model->AddTexture(material, TextureType_Roughness, ValidateTexturePath(texturePath.data));
+					if (assimpTex == aiTextureType_DIFFUSE)
+					{
+						// FIX: materials that have a diffuse texture should not be tinted black/grey
+						material->SetColorAlbedo(Vector4::One);
+					}
+				}
 			}
-		}
+		};
 
-		//= AMBIENT (used as METALLIC) TEXTURE ========================================================================================
-		if (assimpMaterial->GetTextureCount(aiTextureType_AMBIENT) > 0)
-		{
-			if (assimpMaterial->GetTexture(aiTextureType_AMBIENT, 0, &texturePath, nullptr, nullptr, nullptr, nullptr, nullptr) == AI_SUCCESS)
-			{
-				model->AddTexture(material, TextureType_Metallic, ValidateTexturePath(texturePath.data));
-			}
-		}
+		LoadMatTex(aiTextureType_DIFFUSE,	TextureType_Albedo);
+		LoadMatTex(aiTextureType_SHININESS,	TextureType_Roughness); // Specular as roughness
+		LoadMatTex(aiTextureType_AMBIENT,	TextureType_Metallic);	// Ambient as metallic
+		LoadMatTex(aiTextureType_NORMALS,	TextureType_Normal);
+		LoadMatTex(aiTextureType_LIGHTMAP,	TextureType_Occlusion);
+		LoadMatTex(aiTextureType_EMISSIVE,	TextureType_Emission);
+		LoadMatTex(aiTextureType_LIGHTMAP,	TextureType_Occlusion);
+		LoadMatTex(aiTextureType_HEIGHT,	TextureType_Height);
+		LoadMatTex(aiTextureType_OPACITY,	TextureType_Mask);
 
-		//= NORMAL TEXTURE =============================================================================================================
-		if (assimpMaterial->GetTextureCount(aiTextureType_NORMALS) > 0)
-		{
-			if (assimpMaterial->GetTexture(aiTextureType_NORMALS, 0, &texturePath, nullptr, nullptr, nullptr, nullptr, nullptr) == AI_SUCCESS)
-			{
-				model->AddTexture(material, TextureType_Normal, ValidateTexturePath(texturePath.data));
-			}
-		}
-
-		//= OCCLUSION TEXTURE ===========================================================================================================
-		if (assimpMaterial->GetTextureCount(aiTextureType_LIGHTMAP) > 0)
-		{
-			if (assimpMaterial->GetTexture(aiTextureType_LIGHTMAP, 0, &texturePath, nullptr, nullptr, nullptr, nullptr, nullptr) == AI_SUCCESS)
-			{
-				model->AddTexture(material, TextureType_Occlusion, ValidateTexturePath(texturePath.data));
-			}
-		}
-
-		//= EMISSIVE TEXTURE ============================================================================================================
-		if (assimpMaterial->GetTextureCount(aiTextureType_EMISSIVE) > 0)
-		{
-			if (assimpMaterial->GetTexture(aiTextureType_EMISSIVE, 0, &texturePath, nullptr, nullptr, nullptr, nullptr, nullptr) == AI_SUCCESS)
-			{
-				model->AddTexture(material, TextureType_Emission, ValidateTexturePath(texturePath.data));
-			}
-		}
-		//= HEIGHT TEXTURE ============================================================================================================
-		if (assimpMaterial->GetTextureCount(aiTextureType_HEIGHT) > 0)
-		{
-			if (assimpMaterial->GetTexture(aiTextureType_HEIGHT, 0, &texturePath, nullptr, nullptr, nullptr, nullptr, nullptr) == AI_SUCCESS)
-			{
-				model->AddTexture(material, TextureType_Height, ValidateTexturePath(texturePath.data));
-			}
-		}
-
-		//= MASK TEXTURE ===============================================================================================================
-		if (assimpMaterial->GetTextureCount(aiTextureType_OPACITY) > 0)
-		{
-			if (assimpMaterial->GetTexture(aiTextureType_OPACITY, 0, &texturePath, nullptr, nullptr, nullptr, nullptr, nullptr) == AI_SUCCESS)
-			{
-				model->AddTexture(material, TextureType_Mask, ValidateTexturePath(texturePath.data));
-			}
-		}
 		return material;
 	}
 	//============================================================================================
@@ -545,24 +505,17 @@ namespace Directus
 		return filePath;
 	}
 
-	void ModelImporter::CalculateNodeCount(aiNode* node, int& count)
+	void ModelImporter::ComputeNodeCount(aiNode* node, int* count)
 	{
 		if (!node)
 			return;
 
-		count++;
+		(*count)++;
 
 		// Process children
 		for (unsigned int i = 0; i < node->mNumChildren; i++)
 		{
-			CalculateNodeCount(node->mChildren[i], count);
+			ComputeNodeCount(node->mChildren[i], count);
 		}
-	}
-
-	void ModelImporter::ClearProgressStatus()
-	{
-		m_progressStatus = NOT_ASSIGNED;
-		m_jobsDone = 0;
-		m_jobsTotal = 0;
 	}
 }

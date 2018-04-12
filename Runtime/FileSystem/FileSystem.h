@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,13 +21,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==============
+//= INCLUDES ==================
 #include <vector>
-#include "../Core/Helper.h"
-//=========================
+#include "../Core/EngineDefs.h"
+//=============================
 
 //=========================================================
-static const char* NOT_ASSIGNED				= "N/A";
+static const std::string NOT_ASSIGNED		= "N/A";
 static const int NOT_ASSIGNED_HASH			= -1;
 // Metadata extensions
 static const char* METADATA_EXTENSION		= ".xml";
@@ -45,17 +45,18 @@ static const char* MESH_EXTENSION			= ".mesh";
 
 namespace Directus
 {
-	class ENGINE_API FileSystem
+	class ENGINE_CLASS FileSystem
 	{
 	public:
 		static void Initialize();
 
-		//= DIRECTORIES ===========================================
+		//= DIRECTORIES ==============================================
 		static bool CreateDirectory_(const std::string& path);
 		static bool DeleteDirectory(const std::string& directory);
 		static bool DirectoryExists(const std::string& directory);
 		static bool IsDirectory(const std::string& directory);
-		//=========================================================
+		static void OpenDirectoryWindow(const std::string& directory);
+		//============================================================
 
 		//= FILES ============================================================================
 		static bool FileExists(const std::string& filePath);

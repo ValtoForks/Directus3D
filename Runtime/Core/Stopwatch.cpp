@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -48,7 +48,7 @@ namespace Directus
 	float Stopwatch::GetElapsedTimeSec()
 	{
 		duration<double, milli> seconds = high_resolution_clock::now() - m_start;
-		return (float)(seconds.count() / 1000.0f);
+		return (float)(seconds.count() / 1000);
 	}
 
 	float Stopwatch::GetElapsedTimeMs()

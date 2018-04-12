@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,19 +21,19 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ====================
-#include "../Resource/Resource.h"
+//= INCLUDES =====================
+#include "../Resource/IResource.h"
 #include "../Math/Vector3.h"
-//===============================
+//================================
 
-//= FMOD FORWARD DECLARATIONS =
+//= FWD DECLARATIONS =
 namespace FMOD
 {
 	class System;
 	class Sound;
 	class Channel;
 }
-//=============================
+//====================
 
 namespace Directus
 {
@@ -41,8 +41,8 @@ namespace Directus
 
 	enum PlayMode
 	{
-		Memory,
-		Stream
+		Play_Memory,
+		Play_Stream
 	};
 
 	enum Rolloff
@@ -51,22 +51,23 @@ namespace Directus
 		Custom
 	};
 
-	class AudioClip : Resource
+	class ENGINE_CLASS AudioClip : public IResource
 	{
 	public:
-		AudioClip(FMOD::System* fModSystem);
+		AudioClip(Context* context);
 		~AudioClip();
 
-		//= RESOURCE INTERFACE ========================================
-		bool LoadFromFile(const std::string& filePath) override { return true; }
+		//= IResource ==========================================================
+		bool LoadFromFile(const std::string& filePath) override;
 		bool SaveToFile(const std::string& filePath) override { return true; }
-		//=============================================================
+		unsigned int GetMemory() override;
+		//======================================================================
 
-		bool Load(const std::string& filePath, PlayMode mode);
 		bool Play();
 		bool Pause();
 		bool Stop();
 
+		// Set's sound looping
 		bool SetLoop(bool loop);
 
 		// Set's the volume [0.0f, 1.0f]
@@ -101,17 +102,19 @@ namespace Directus
 		bool CreateSound(const std::string& filePath);
 		bool CreateStream(const std::string& filePath);
 		//=============================================
-		int BuildSoundMode();
+		int GetSoundMode();
+		void LogErrorFMOD(int error);
+		bool IsChannelValid();
 
 		Transform* m_transform;
-		FMOD::System* m_fModSystem;
-		int m_result;
-		FMOD::Sound* m_sound;
-		FMOD::Channel* m_channel;
+		FMOD::System* m_systemFMOD;
+		FMOD::Sound* m_soundFMOD;
+		FMOD::Channel* m_channelFMOD;	
 		PlayMode m_playMode;
 		int m_modeLoop;
 		float m_minDistance;
 		float m_maxDistance;
 		int m_modeRolloff;
+		int m_result;	
 	};
 }

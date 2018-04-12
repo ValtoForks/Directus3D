@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,23 +22,26 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES ===========================
 #include "Scene.h"
 #include "GameObject.h"
+#include "Components/Transform.h"
+#include "Components/Camera.h"
+#include "Components/Light.h"
+#include "Components/Script.h"
+#include "Components/LineRenderer.h"
+#include "Components/Skybox.h"
+#include "Components/Renderable.h"
 #include "../Core/Timer.h"
 #include "../Core/Context.h"
 #include "../Core/Stopwatch.h"
-#include "../Components/Transform.h"
-#include "../Components/Camera.h"
-#include "../Components/Light.h"
-#include "../Components/Script.h"
-#include "../Components/LineRenderer.h"
-#include "../Components/Skybox.h"
-#include "../Components/MeshFilter.h"
-#include "../Components/MeshRenderer.h"
-#include "../EventSystem/EventSystem.h"
+#include "../Core/EventSystem.h"
 #include "../Resource/ResourceManager.h"
 #include "../Graphics/Mesh.h"
 #include "../IO/FileStream.h"
 #include "../FileSystem/FileSystem.h"
 #include "../Logging/Log.h"
+#include "../Core/Engine.h"
+#include "Components/AudioListener.h"
+#include "../Profiling/Profiler.h"
+#include "../Resource/ProgressReport.h"
 //======================================
 
 //= NAMESPACES ================
@@ -54,12 +57,8 @@ namespace Directus
 		m_fps = 0.0f;
 		m_timePassed = 0.0f;
 		m_frameCount = 0;
-		m_progressStatus = NOT_ASSIGNED;
-		m_jobsDone = 0.0f;
-		m_jobsTotal = 0.0f;
-		m_isLoading = false;
 
-		SUBSCRIBE_TO_EVENT(EVENT_UPDATE, EVENT_HANDLER(Resolve));
+		SUBSCRIBE_TO_EVENT(EVENT_SCENE_RESOLVE, EVENT_HANDLER(Resolve));
 		SUBSCRIBE_TO_EVENT(EVENT_UPDATE, EVENT_HANDLER(Update));
 	}
 
@@ -86,22 +85,40 @@ namespace Directus
 		}
 	}
 
-	void Scene::OnDisable()
+	void Scene::Stop()
 	{
 		for (const auto& gameObject : m_gameObjects)
 		{
-			gameObject->OnDisable();
+			gameObject->Stop();
 		}
 	}
 
 	void Scene::Update()
-	{
+	{	
+		PROFILE_FUNCTION_BEGIN();
+
+		//= DETECT TOGGLING TO GAME MODE =============================
+		if (Engine::EngineMode_IsSet(Engine_Game) && m_isInEditorMode)
+		{
+			Start();
+		}
+		//============================================================
+		//= DETECT TOGGLING TO EDITOR MODE ============================
+		if (!Engine::EngineMode_IsSet(Engine_Game) && !m_isInEditorMode)
+		{
+			Stop();
+		}
+		//=============================================================
+		m_isInEditorMode = !Engine::EngineMode_IsSet(Engine_Game);
+
 		for (const auto& gameObject : m_gameObjects)
 		{
 			gameObject->Update();
 		}
 
-		CalculateFPS();
+		ComputeFPS();
+
+		PROFILE_FUNCTION_END();
 	}
 
 	void Scene::Clear()
@@ -119,10 +136,10 @@ namespace Directus
 	//= I/O ===================================================================================================
 	bool Scene::SaveToFile(const string& filePathIn)
 	{
-		m_progressStatus = "Saving scene...";
+		ProgressReport::Get().Reset(g_progress_Scene);
+		ProgressReport::Get().SetStatus(g_progress_Scene, "Saving scene...");
 		Stopwatch timer;
-		m_isLoading = true;
-
+	
 		// Add scene file extension to the filepath if it's missing
 		string filePath = filePathIn;
 		if (FileSystem::GetExtensionFromFilePath(filePath) != SCENE_EXTENSION)
@@ -134,7 +151,7 @@ namespace Directus
 		m_context->GetSubsystem<ResourceManager>()->SaveResourcesToFiles();
 
 		// Create a prefab file
-		unique_ptr<FileStream> file = make_unique<FileStream>(filePath, FileStreamMode_Write);
+		auto file = make_unique<FileStream>(filePath, FileStreamMode_Write);
 		if (!file->IsOpen())
 			return false;
 
@@ -164,9 +181,10 @@ namespace Directus
 		}
 		//==============================================
 
-		ClearProgressStatus();
 		LOG_INFO("Scene: Saving took " + to_string((int)timer.GetElapsedTimeMs()) + " ms");
 		FIRE_EVENT(EVENT_SCENE_SAVED);
+
+		ProgressReport::Get().SetIsLoading(g_progress_Scene, false);
 
 		return true;
 	}
@@ -180,11 +198,11 @@ namespace Directus
 		}
 
 		Clear(); 
-		m_progressStatus = "Loading scene...";
-		m_isLoading = true;
+		ProgressReport::Get().Reset(g_progress_Scene);
+		ProgressReport::Get().SetStatus(g_progress_Scene, "Loading scene...");
 
 		// Read all the resource file paths
-		unique_ptr<FileStream> file = make_unique<FileStream>(filePath, FileStreamMode_Read);
+		auto file = make_unique<FileStream>(filePath, FileStreamMode_Read);
 		if (!file->IsOpen())
 			return false;
 
@@ -193,7 +211,7 @@ namespace Directus
 		vector<string> resourcePaths;
 		file->Read(&resourcePaths);
 
-		m_jobsTotal = (float)resourcePaths.size();
+		ProgressReport::Get().SetJobCount(g_progress_Scene, (int)resourcePaths.size());
 
 		// Load all the resources
 		auto resourceMng = m_context->GetSubsystem<ResourceManager>();
@@ -219,7 +237,7 @@ namespace Directus
 				resourceMng->Load<Texture>(resourcePath);
 			}
 
-			m_jobsDone++;
+			ProgressReport::Get().JobDone(g_progress_Scene);
 		}
 
 		//= Load GameObjects ============================	
@@ -229,7 +247,7 @@ namespace Directus
 		// 2nd - Root GameObject IDs
 		for (int i = 0; i < rootGameObjectCount; i++)
 		{
-			auto gameObj = CreateGameObject().lock();
+			auto gameObj = GameObject_CreateAdd().lock();
 			gameObj->SetID(file->ReadInt());
 		}
 
@@ -244,8 +262,9 @@ namespace Directus
 		}
 		//==============================================
 
-		ClearProgressStatus();
-		LOG_INFO("Scene: Loading took " + to_string((int)timer.GetElapsedTimeMs()) + " ms");
+		Resolve();
+		ProgressReport::Get().SetIsLoading(g_progress_Scene, false);
+		LOG_INFO("Scene: Loading took " + to_string((int)timer.GetElapsedTimeMs()) + " ms");	
 		FIRE_EVENT(EVENT_SCENE_LOADED);
 
 		return true;
@@ -253,14 +272,81 @@ namespace Directus
 	//===================================================================================================
 
 	//= GAMEOBJECT HELPER FUNCTIONS  ====================================================================
+	weak_ptr<GameObject> Scene::GameObject_CreateAdd()
+	{
+		auto gameObj = make_shared<GameObject>(m_context);
+
+		// First keep a local reference to this GameObject because 
+		// as the Transform (added below) will call us back to get a reference to it
+		m_gameObjects.emplace_back(gameObj);
+
+		gameObj->Initialize(gameObj->AddComponent<Transform>().lock().get());
+
+		return gameObj;
+	}
+
+	void Scene::GameObject_Add(shared_ptr<GameObject> gameObject)
+	{
+		if (!gameObject)
+			return;
+
+		m_gameObjects.emplace_back(gameObject);
+	}
+
+	bool Scene::GameObject_Exists(const weak_ptr<GameObject>& gameObject)
+	{
+		if (gameObject.expired())
+			return false;
+
+		return !GetGameObjectByID(gameObject.lock()->GetID()).expired();
+	}
+
+	// Removes a GameObject and all of it's children
+	void Scene::GameObject_Remove(const weak_ptr<GameObject>& gameObject)
+	{
+		GameObject* gameObjPtr = gameObject.lock().get();
+		if (!gameObjPtr)
+			return;
+
+		// remove any descendants
+		vector<Transform*> children = gameObjPtr->GetTransform_PtrRaw()->GetChildren();
+		for (const auto& child : children)
+		{
+			GameObject_Remove(child->GetGameObject_PtrWeak());
+		}
+
+		// Keep a reference to it's parent (in case it has one)
+		Transform* parent = gameObjPtr->GetTransform_PtrRaw()->GetParent();
+
+		// Remove this GameObject
+		for (auto it = m_gameObjects.begin(); it < m_gameObjects.end();)
+		{
+			shared_ptr<GameObject> temp = *it;
+			if (temp->GetID() == gameObjPtr->GetID())
+			{
+				it = m_gameObjects.erase(it);
+				break;
+			}
+			++it;
+		}
+
+		// If there was a parent, update it
+		if (parent)
+		{
+			parent->ResolveChildrenRecursively();
+		}
+
+		Resolve();
+	}
+
 	vector<weak_ptr<GameObject>> Scene::GetRootGameObjects()
 	{
 		vector<weak_ptr<GameObject>> rootGameObjects;
 		for (const auto& gameObj : m_gameObjects)
 		{
-			if (gameObj->GetTransform()->IsRoot())
+			if (gameObj->GetTransform_PtrRaw()->IsRoot())
 			{
-				rootGameObjects.push_back(gameObj);
+				rootGameObjects.emplace_back(gameObj);
 			}
 		}
 
@@ -272,8 +358,7 @@ namespace Directus
 		if (gameObject.expired())
 			return weak_ptr<GameObject>();
 
-		GameObject* rawPtr = gameObject.lock()->GetTransform()->GetRoot()->GetGameObject();
-		return GetWeakReferenceToGameObject(rawPtr);
+		return gameObject.lock()->GetTransform_PtrRaw()->GetRoot()->GetGameObject_PtrWeak();
 	}
 
 	weak_ptr<GameObject> Scene::GetGameObjectByName(const string& name)
@@ -301,87 +386,20 @@ namespace Directus
 
 		return weak_ptr<GameObject>();
 	}
-
-	bool Scene::GameObjectExists(weak_ptr<GameObject> gameObject)
-	{
-		if (gameObject.expired())
-			return false;
-
-		return !GetGameObjectByID(gameObject.lock()->GetID()).expired() ? true : false;
-	}
-
-	// Removes a GameObject and all of it's children
-	void Scene::RemoveGameObject(weak_ptr<GameObject> gameObject)
-	{
-		if (gameObject.expired())
-			return;
-
-		// remove any descendants
-		vector<Transform*> descendants;
-		gameObject.lock()->GetTransform()->GetDescendants(&descendants);
-		for (const auto& descendant : descendants)
-		{
-			RemoveSingleGameObject(GetWeakReferenceToGameObject(descendant->GetGameObject()));
-		}
-
-		// remove this gameobject but keep it's parent
-		Transform* parent = gameObject.lock()->GetTransform()->GetParent();
-		RemoveSingleGameObject(gameObject);
-
-		// if there is a parent, update it's children pool
-		if (parent)
-		{
-			parent->ResolveChildrenRecursively();
-		}
-	}
-
-	// Removes a GameObject but leaves the parent and the children as is
-	void Scene::RemoveSingleGameObject(weak_ptr<GameObject> gameObject)
-	{
-		if (gameObject.expired())
-			return;
-
-		bool dirty = false;
-		for (auto it = m_gameObjects.begin(); it < m_gameObjects.end();)
-		{
-			shared_ptr<GameObject> temp = *it;
-			if (temp->GetID() == gameObject.lock()->GetID())
-			{
-				it = m_gameObjects.erase(it);
-				dirty = true;
-				return;
-			}
-			++it;
-		}
-
-		if (dirty)
-		{
-			Resolve();
-		}
-	}
-
-	weak_ptr<GameObject> Scene::GetWeakReferenceToGameObject(GameObject* gameObject)
-	{
-		if (!gameObject)
-			return weak_ptr<GameObject>();
-
-		return GetGameObjectByID(gameObject->GetID());
-	}
-
 	//===================================================================================================
 
 	//= SCENE RESOLUTION  ===============================================================================
 	void Scene::Resolve()
 	{
+		PROFILE_FUNCTION_BEGIN();
+
 		m_renderables.clear();
 		m_renderables.shrink_to_fit();
 
-		bool hasCamera = false;
-		bool hasSkybox = false;
 		for (const auto& gameObject : m_gameObjects)
 		{
-			hasCamera = false;
-			hasSkybox = false;
+			static bool hasCamera = false;
+			static bool hasSkybox = false;
 
 			// Find camera
 			if (gameObject->HasComponent<Camera>())
@@ -398,16 +416,14 @@ namespace Directus
 			}
 
 			// Find renderables
-			if ((gameObject->HasComponent<MeshRenderer>() && gameObject->HasComponent<MeshFilter>()) ||
-				hasCamera ||
-				hasSkybox ||
-				gameObject->HasComponent<Light>())
+			if (gameObject->HasComponent<Renderable>() || hasCamera || hasSkybox || gameObject->HasComponent<Light>())
 			{
 				m_renderables.push_back(gameObject);
 			}
 		}
 
-		FIRE_EVENT_DATA(EVENT_SCENE_UPDATED, VectorToVariant(m_renderables));
+		PROFILE_FUNCTION_END();
+		FIRE_EVENT_DATA(EVENT_SCENE_RESOLVED, m_renderables);
 	}
 	//===================================================================================================
 
@@ -426,12 +442,12 @@ namespace Directus
 	//= COMMON GAMEOBJECT CREATION =========================================================================
 	weak_ptr<GameObject> Scene::CreateSkybox()
 	{
-		shared_ptr<GameObject> skybox = CreateGameObject().lock();
+		shared_ptr<GameObject> skybox = GameObject_CreateAdd().lock();
 		skybox->SetName("Skybox");
-		skybox->AddComponent<LineRenderer>();
-		skybox->AddComponent<Skybox>();
 		skybox->SetHierarchyVisibility(false);
-		skybox->GetTransform()->SetParent(m_mainCamera.lock()->GetTransform());
+		skybox->AddComponent<LineRenderer>();
+		skybox->AddComponent<Skybox>();	
+		skybox->GetTransform_PtrRaw()->SetParent(m_mainCamera.lock()->GetTransform_PtrRaw());
 
 		return skybox;
 	}
@@ -441,22 +457,23 @@ namespace Directus
 		auto resourceMng = m_context->GetSubsystem<ResourceManager>();
 		string scriptDirectory = resourceMng->GetStandardResourceDirectory(Resource_Script);
 
-		shared_ptr<GameObject> camera = CreateGameObject().lock();
+		shared_ptr<GameObject> camera = GameObject_CreateAdd().lock();
 		camera->SetName("Camera");
 		camera->AddComponent<Camera>();
-		camera->GetTransform()->SetPositionLocal(Vector3(0.0f, 1.0f, -5.0f));
-		camera->AddComponent<Script>().lock()->AddScript(scriptDirectory + "MouseLook.as");
-		camera->AddComponent<Script>().lock()->AddScript(scriptDirectory + "FirstPersonController.as");
+		camera->AddComponent<AudioListener>();
+		camera->AddComponent<Script>().lock()->SetScript(scriptDirectory + "MouseLook.as");
+		camera->AddComponent<Script>().lock()->SetScript(scriptDirectory + "FirstPersonController.as");
+		camera->GetTransform_PtrRaw()->SetPositionLocal(Vector3(0.0f, 1.0f, -5.0f));
 
 		return camera;
 	}
 
 	weak_ptr<GameObject> Scene::CreateDirectionalLight()
 	{
-		shared_ptr<GameObject> light = CreateGameObject().lock();
+		shared_ptr<GameObject> light = GameObject_CreateAdd().lock();
 		light->SetName("DirectionalLight");
-		light->GetTransform()->SetRotationLocal(Quaternion::FromEulerAngles(30.0f, 0.0, 0.0f));
-		light->GetTransform()->SetPosition(Vector3(0.0f, 10.0f, 0.0f));
+		light->GetTransform_PtrRaw()->SetRotationLocal(Quaternion::FromEulerAngles(30.0f, 0.0, 0.0f));
+		light->GetTransform_PtrRaw()->SetPosition(Vector3(0.0f, 10.0f, 0.0f));
 
 		Light* lightComp = light->AddComponent<Light>().lock().get();
 		lightComp->SetLightType(LightType_Directional);
@@ -467,15 +484,7 @@ namespace Directus
 	//======================================================================================================
 
 	//= HELPER FUNCTIONS ===================================================================================
-	void Scene::ClearProgressStatus()
-	{
-		m_progressStatus = NOT_ASSIGNED;
-		m_jobsDone = 0.0f;
-		m_jobsTotal = 0.0f;
-		m_isLoading = false;
-	}
-
-	void Scene::CalculateFPS()
+	void Scene::ComputeFPS()
 	{
 		// update counters
 		m_frameCount++;
@@ -492,24 +501,4 @@ namespace Directus
 		}
 	}
 	//======================================================================================================
-	weak_ptr<GameObject> Scene::CreateGameObject()
-	{
-		auto gameObj = make_shared<GameObject>(m_context);
-
-		// First save the GameObject because the Transform (added below)
-		// will call the scene to get the GameObject it's attached to
-		m_gameObjects.push_back(gameObj);
-
-		gameObj->Initialize(gameObj->AddComponent<Transform>().lock().get());
-
-		return gameObj;
-	}
-
-	void Scene::AddGameObject(shared_ptr<GameObject> gameObject)
-	{
-		if (!gameObject)
-			return;
-
-		m_gameObjects.push_back(gameObject);
-	}
 }

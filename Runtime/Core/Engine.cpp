@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,7 +19,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES =================================
+//= INCLUDES ===========================
 #include "Engine.h"
 #include "Timer.h"
 #include "Settings.h"
@@ -29,12 +29,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../Scripting/Scripting.h"
 #include "../Graphics/Renderer.h"
 #include "../Audio/Audio.h"
-#include "../Graphics/GraphicsDefinitions.h"
-#include "../EventSystem/EventSystem.h"
-#include "../Input/Input.h"
+#include "../Core/EngineBackends.h"
+#include "../Core/EventSystem.h"
+#include "../Input/DInput/DInput.h"
 #include "../Physics/Physics.h"
-#include "../Profiling/PerformanceProfiler.h"
-//===========================================
+#include "../Scene/Scene.h"
+#include "Stopwatch.h"
+#include "../Profiling/Profiler.h"
+//======================================
 
 //= NAMESPACES =====
 using namespace std;
@@ -42,22 +44,29 @@ using namespace std;
 
 namespace Directus
 {
+	void* Engine::m_drawHandle		= nullptr;
+	void* Engine::m_windowHandle	= nullptr;
+	void* Engine::m_windowInstance	= nullptr;
+	unsigned long Engine::m_flags	= 0;
+	static unique_ptr<Stopwatch> g_stopwatch;
+
 	Engine::Engine(Context* context) : Subsystem(context)
 	{
-		m_flags = 0;
 		m_flags |= Engine_Update;
 		m_flags |= Engine_Render;
 		m_flags |= Engine_Physics;
+		m_flags |= Engine_Game;
 
-		m_timer = nullptr;
+		m_timer			= nullptr;
+		g_stopwatch		= make_unique<Stopwatch>();
 
 		// Register self as a subsystem
 		m_context->RegisterSubsystem(this);
 
-		// Initialize global/static modules 
+		// Initialize global/static subsystems 
 		Log::Initialize();
 		FileSystem::Initialize();
-		Settings::Initialize();
+		Settings::Get().Initialize();
 
 		// Register subsystems
 		m_context->RegisterSubsystem(new Timer(m_context));
@@ -72,27 +81,19 @@ namespace Directus
 		m_context->RegisterSubsystem(new Scene(m_context));
 	}
 
-	void Engine::SetHandles(void* instance, void* mainWindowHandle, void* drawPaneHandle)
-	{
-		m_drawHandle = drawPaneHandle;
-		m_windowHandle = mainWindowHandle;
-		m_hinstance = instance;
-	}
-
 	bool Engine::Initialize()
 	{
 		bool success = true;
 
 		// Timer
-		if (!m_context->GetSubsystem<Timer>()->Initialize())
+		m_timer = m_context->GetSubsystem<Timer>();
+		if (!m_timer->Initialize())
 		{
 			LOG_ERROR("Failed to initialize Timer subsystem");
 			success = false;
 		}
-		m_timer = m_context->GetSubsystem<Timer>();
-
+	
 		// Input
-		m_context->GetSubsystem<Input>()->SetHandle((HWND)m_windowHandle, (HINSTANCE)m_hinstance);
 		if (!m_context->GetSubsystem<Input>()->Initialize())
 		{
 			LOG_ERROR("Failed to initialize Input subsystem");
@@ -156,36 +157,34 @@ namespace Directus
 			success = false;
 		}
 
-		PerformanceProfiler::Initialize(m_context);
+		Profiler::Get().Initialize(m_context);
+		g_stopwatch->Start();
 
 		return success;
 	}
 
-	void Engine::Update()
+	void Engine::Tick()
 	{
-		// Timer always ticks
-		m_timer->Update();
-		static float deltaTime = m_timer->GetDeltaTimeMs();
-
-		if (m_flags & Engine_Update)
+		//= MAX FPS =======================================================================
+		float maxFPS = EngineMode_IsSet(Engine_Game) ? Settings::Get().GetMaxFPS() : 60.0f;
+		if (g_stopwatch->GetElapsedTimeSec() < 1.0 / maxFPS)
 		{
-			FIRE_EVENT_DATA(EVENT_UPDATE, deltaTime);
+			return;
+		}
+		g_stopwatch->Start();
+		//=================================================================================
+		
+		m_timer->Tick();
+
+		if (EngineMode_IsSet(Engine_Update))
+		{
+			FIRE_EVENT_DATA(EVENT_UPDATE, m_timer->GetDeltaTimeSec());
 		}
 
-		if (m_flags & Engine_Render)
+		if (EngineMode_IsSet(Engine_Render))
 		{
 			FIRE_EVENT(EVENT_RENDER);
 		}
-	}
-
-	bool Engine::IsUpdating()
-	{
-		return m_flags & Engine_Update;
-	}
-
-	bool Engine::IsRendering()
-	{
-		return m_flags & Engine_Render;
 	}
 
 	void Engine::Shutdown()
@@ -196,5 +195,12 @@ namespace Directus
 
 		// Release Log singleton
 		Log::Release();
+	}
+
+	void Engine::SetHandles(void* drawHandle, void* windowHandle, void* windowInstance)
+	{
+		m_drawHandle		= drawHandle;
+		m_windowHandle		= windowHandle;
+		m_windowInstance	= windowInstance;
 	}
 }

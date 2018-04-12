@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,14 +21,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ======================
+//= INCLUDES ================================
 #include <memory>
-#include "assimp\scene.h"
-#include "..\..\Math\Vector2.h"
-#include "..\..\Math\Vector3.h"
-#include "..\..\Math\Matrix.h"
-#include "..\..\Scene\GameObject.h"
-//=================================
+#include "assimp/scene.h"
+#include "../../Math/Vector2.h"
+#include "../../Math/Vector3.h"
+#include "../../Math/Matrix.h"
+#include "../../Scene/GameObject.h"
+#include "../../Scene/Components/Transform.h"
+//===========================================
 
 namespace Directus
 {
@@ -45,24 +46,18 @@ namespace Directus
 			);
 		}
 
-		static void SetGameObjectTransform(std::weak_ptr<GameObject> gameObject, aiNode* node)
+		static void SetGameObjectTransform(const std::weak_ptr<GameObject>& gameObject, aiNode* node)
 		{
 			if (gameObject.expired())
 				return;
 
-			aiMatrix4x4 mAssimp = node->mTransformation;
-			Math::Vector3 position;
-			Math::Quaternion rotation;
-			Math::Vector3 scale;
-
-			// Decompose the transformation matrix
-			Math::Matrix mEngine = aiMatrix4x4ToMatrix(mAssimp);
-			mEngine.Decompose(scale, rotation, position);
+			// Convert to engine matrix
+			Math::Matrix mEngine = aiMatrix4x4ToMatrix(node->mTransformation);
 
 			// Apply position, rotation and scale
-			gameObject.lock()->GetTransform()->SetPositionLocal(position);
-			gameObject.lock()->GetTransform()->SetRotationLocal(rotation);
-			gameObject.lock()->GetTransform()->SetScaleLocal(scale);
+			gameObject.lock()->GetTransform_PtrRaw()->SetPositionLocal(mEngine.GetTranslation());
+			gameObject.lock()->GetTransform_PtrRaw()->SetRotationLocal(mEngine.GetRotation());
+			gameObject.lock()->GetTransform_PtrRaw()->SetScaleLocal(mEngine.GetScale());
 		}
 
 		static Math::Vector4 ToVector4(const aiColor4D& aiColor)

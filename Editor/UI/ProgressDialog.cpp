@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,9 +21,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES ==============
 #include "ProgressDialog.h"
-#include "imgui/imgui.h"
+#include "../ImGui/imgui.h"
 #include "EditorHelper.h"
-#include "Core/Engine.h"
 //=========================
 
 //= NAMESPACES ==========
@@ -33,12 +32,11 @@ using namespace Directus;
 
 static float width = 500.0f;
 
-ProgressDialog::ProgressDialog(const string& title, Context* context)
+ProgressDialog::ProgressDialog(char* title /*Hold on...*/)
 {
-	m_title = title;
-	m_context = context;
-	m_isVisible = true;
-	m_progress = 0.0f;
+	m_title		= title;
+	m_isVisible	= true;
+	m_progress	= 0.0f;
 }
 
 ProgressDialog::~ProgressDialog()
@@ -57,8 +55,9 @@ void ProgressDialog::Update()
 void ProgressDialog::ShowProgressBar()
 {
 	// Window begin
-	ImGui::SetNextWindowSize(ImVec2(width, 73), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(width, 83), ImGuiCond_Always);
 	ImGui::Begin(m_title.c_str(), &m_isVisible, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
+	ImGui::SetWindowFocus();
 
 	// Progress	
 	ImGui::PushItemWidth(width - ImGui::GetStyle().WindowPadding.x * 2.0f);

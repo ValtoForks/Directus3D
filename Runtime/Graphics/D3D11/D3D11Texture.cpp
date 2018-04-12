@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -35,6 +35,7 @@ namespace Directus
 	{
 		m_shaderResourceView = nullptr;
 		m_graphics = graphics;
+		m_memoryUsage = 0;
 	}
 
 	D3D11Texture::~D3D11Texture()
@@ -46,7 +47,7 @@ namespace Directus
 		m_shaderResourceView = nullptr;
 	}
 
-	bool D3D11Texture::Create(int width, int height, int channels, const vector<unsigned char>& data, DXGI_FORMAT format)
+	bool D3D11Texture::Create(int width, int height, int channels, const vector<std::byte>& data, DXGI_FORMAT format)
 	{
 		if (!m_graphics->GetDevice())
 			return false;
@@ -63,8 +64,11 @@ namespace Directus
 		D3D11_SUBRESOURCE_DATA subresource;
 		ZeroMemory(&subresource, sizeof(subresource));
 		subresource.pSysMem = &data[0];
-		subresource.SysMemPitch = (width * channels) * sizeof(unsigned char);
-		subresource.SysMemSlicePitch = (width * height * channels) * sizeof(unsigned char);
+		subresource.SysMemPitch = (width * channels) * sizeof(std::byte);
+		subresource.SysMemSlicePitch = (width * height * channels) * sizeof(std::byte);
+
+		// Compute memory usage
+		m_memoryUsage = (unsigned int)(sizeof(std::byte) * data.size());
 
 		// ID3D11Texture2D
 		D3D11_TEXTURE2D_DESC textureDesc;
@@ -106,7 +110,7 @@ namespace Directus
 		return true;
 	}
 
-	bool D3D11Texture::Create(int width, int height, int channels, const vector<vector<unsigned char>>& mipmaps, DXGI_FORMAT format)
+	bool D3D11Texture::Create(int width, int height, int channels, const vector<vector<std::byte>>& mipmaps, DXGI_FORMAT format)
 	{
 		if (!m_graphics->GetDevice())
 			return false;
@@ -126,8 +130,8 @@ namespace Directus
 			// SUBRESROUCE DATA
 			subresourceData.push_back(D3D11_SUBRESOURCE_DATA{});
 			subresourceData.back().pSysMem = &mipmaps[i][0];
-			subresourceData.back().SysMemPitch = (width * channels) * sizeof(unsigned char);
-			subresourceData.back().SysMemSlicePitch = (width * height * channels) * sizeof(unsigned char);
+			subresourceData.back().SysMemPitch = (width * channels) * sizeof(std::byte);
+			subresourceData.back().SysMemSlicePitch = (width * height * channels) * sizeof(std::byte);
 
 			// ID3D11Texture2D
 			textureDescs.push_back(D3D11_TEXTURE2D_DESC{});
@@ -145,6 +149,9 @@ namespace Directus
 
 			width = max(width / 2, 1);
 			height = max(height / 2, 1);
+
+			// Compute memory usage
+			m_memoryUsage += (unsigned int)(sizeof(std::byte) * mipmaps[i].size());
 		}
 		ID3D11Texture2D* texture = nullptr;
 		HRESULT result = m_graphics->GetDevice()->CreateTexture2D(textureDescs.data(), subresourceData.data(), &texture);
@@ -171,7 +178,7 @@ namespace Directus
 		return true;
 	}
 
-	bool D3D11Texture::CreateAndGenerateMipmaps(int width, int height, int channels, const vector<unsigned char>& data, DXGI_FORMAT format)
+	bool D3D11Texture::CreateAndGenerateMipmaps(int width, int height, int channels, const vector<std::byte>& data, DXGI_FORMAT format)
 	{
 		if (!m_graphics->GetDevice())
 			return false;
@@ -221,8 +228,11 @@ namespace Directus
 		D3D11_SUBRESOURCE_DATA subresource;
 		ZeroMemory(&subresource, sizeof(subresource));
 		subresource.pSysMem = &data[0];
-		subresource.SysMemPitch = (width * channels) * sizeof(unsigned char);
-		subresource.SysMemSlicePitch = (width * height * channels) * sizeof(unsigned char);
+		subresource.SysMemPitch = (width * channels) * sizeof(std::byte);
+		subresource.SysMemSlicePitch = (width * height * channels) * sizeof(std::byte);
+
+		// Compute memory usage
+		m_memoryUsage = (unsigned int)(sizeof(std::byte) * data.size());
 
 		// Copy data from memory to the subresource created in non-mappable memory
 		m_graphics->GetDeviceContext()->UpdateSubresource(texture, 0, nullptr, subresource.pSysMem, subresource.SysMemPitch, 0);

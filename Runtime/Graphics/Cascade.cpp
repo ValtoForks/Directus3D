@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,15 +19,15 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ========================
+//= INCLUDES =============================
 #include "Cascade.h"
 #include "../Math/Matrix.h"
 #include "../Logging/Log.h"
-#include "../Components/Camera.h"
 #include "../Core/Context.h"
+#include "../Scene/Components/Camera.h"
+#include "../Scene/Components/Transform.h"
 #include "D3D11/D3D11RenderTexture.h"
-#include "../Components/Transform.h"
-//===================================
+//========================================
 
 //= NAMESPACES ================
 using namespace std;
@@ -38,10 +38,10 @@ namespace Directus
 {
 	Cascade::Cascade(int resolution, Camera* camera, Context* context)
 	{
-		m_resolution = resolution;
-		auto graphics = context->GetSubsystem<Graphics>();
-		m_depthMap = make_unique<D3D11RenderTexture>(graphics, m_resolution, m_resolution, true);
-		m_camera = camera;
+		m_resolution	= resolution;
+		auto graphics	= context->GetSubsystem<Graphics>();
+		m_depthMap		= make_unique<D3D11RenderTexture>(graphics, m_resolution, m_resolution, true);
+		m_camera		= camera;
 	}
 
 	void Cascade::SetAsRenderTarget()
@@ -55,12 +55,12 @@ namespace Directus
 		return m_depthMap ? m_depthMap->GetShaderResourceView() : nullptr;
 	}
 
-	Matrix Cascade::ComputeProjectionMatrix(int cascadeIndex, const Vector3 centerPos, const Matrix& viewMatrix)
+	Matrix Cascade::ComputeProjectionMatrix(int cascadeIndex, const Vector3& centerPos, const Matrix& viewMatrix)
 	{
 		// Hardcoded sizes to match the splits
 		float extents = 0;
 		if (cascadeIndex == 0)
-			extents = 20;
+			extents = 10;
 
 		if (cascadeIndex == 1)
 			extents = 45;
@@ -95,18 +95,17 @@ namespace Directus
 			return 0.0f;
 		}
 
-		// Note: The shader linearizes it's depth before comparing
-		// against the cascade splits, however it's not perfect so
-		// the cascade splits still maintain a logarithmic nature
+		// These cascade splits have a logarithmic nature, have to fix
 
 		// Second cascade
 		if (cascadeIndex == 1)
-			return 0.7f;
+			return 0.79f;
 
 		// Third cascade
 		if (cascadeIndex == 2)
-			return 0.87f;
+			return 0.97f;
 
 		return 0.0f;
 	}
+
 }

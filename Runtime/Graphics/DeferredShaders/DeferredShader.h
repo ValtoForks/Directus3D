@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,11 +24,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES ==============================
 #include "../../Math/Matrix.h"
 #include "../../Math/Vector4.h"
-#include "../../Components/Camera.h"
 #include "../D3D11/D3D11GraphicsDevice.h"
-#include "../../Components/Light.h"
 #include "../D3D11/D3D11ConstantBuffer.h"
 #include "../D3D11/D3D11Shader.h"
+#include "../../Scene/Components/Camera.h"
+#include "../../Scene/Components/Light.h"
 #include "../../Resource/ResourceManager.h"
 //=========================================
 
@@ -89,9 +89,8 @@ namespace Directus
 			float spotLightCount;
 			float nearPlane;
 			float farPlane;
-			float softShadows;
 			Math::Vector2 viewport;
-			float padding;
+			Math::Vector2 padding;
 		};
 
 		std::shared_ptr<D3D11ConstantBuffer> m_matrixBuffer;

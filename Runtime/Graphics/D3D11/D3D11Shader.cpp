@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,7 +21,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES ============================
 #include "D3D11Shader.h"
-#include "../../Core/Helper.h"
+#include "../../Core/EngineDefs.h"
 #include "../../Logging/Log.h"
 #include "../../FileSystem/FileSystem.h"
 #include <d3dcompiler.h>
@@ -48,13 +48,13 @@ namespace Directus
 
 	D3D11Shader::D3D11Shader(D3D11GraphicsDevice* graphicsDevice) : m_graphics(graphicsDevice)
 	{
-		m_vertexShader = nullptr;
-		m_pixelShader = nullptr;
-		m_VSBlob = nullptr;
-		m_compiled = false;
-		m_entrypoint = NOT_ASSIGNED;
-		m_profile = NOT_ASSIGNED;
-		m_layoutHasBeenSet = false;
+		m_vertexShader		= nullptr;
+		m_pixelShader		= nullptr;
+		m_VSBlob			= nullptr;
+		m_compiled			= false;
+		m_entrypoint		= NOT_ASSIGNED.c_str();
+		m_profile			= NOT_ASSIGNED.c_str();
+		m_layoutHasBeenSet	= false;
 
 		// Create input layout
 		m_D3D11InputLayout = make_shared<D3D11InputLayout>(m_graphics);
@@ -70,7 +70,7 @@ namespace Directus
 		m_samplers.shrink_to_fit();
 	}
 
-	bool D3D11Shader::Load(const string& filePath)
+	bool D3D11Shader::Compile(const string& filePath)
 	{
 		m_filePath = filePath;
 
@@ -133,7 +133,13 @@ namespace Directus
 		}
 		else
 		{
-			vector<D3D11_INPUT_ELEMENT_DESC> inputLayoutDesc = Reflect(m_VSBlob);
+			auto descPair = Reflect(m_VSBlob);
+			vector<D3D11_INPUT_ELEMENT_DESC> inputLayoutDesc = descPair.first;
+			for (unsigned int i = 0; i < inputLayoutDesc.size(); ++i)
+			{
+				inputLayoutDesc[i].SemanticName = descPair.second[i].c_str();
+			}
+
 			m_layoutHasBeenSet = m_D3D11InputLayout->Create(m_VSBlob, &inputLayoutDesc[0], unsigned int(inputLayoutDesc.size()));
 		}
 
@@ -181,7 +187,7 @@ namespace Directus
 		m_graphics->GetDeviceContext()->PSSetShader(m_pixelShader, nullptr, 0);
 
 		// set the samplers
-		for (int i = 0; i < m_samplers.size(); i++)
+		for (unsigned int i = 0; i < m_samplers.size(); i++)
 		{
 			m_samplers[i]->Set(i);
 		}
@@ -204,7 +210,7 @@ namespace Directus
 	}
 
 	//= COMPILATION ================================================================================================================================================================================
-	bool D3D11Shader::CompileVertexShader(ID3D10Blob** vsBlob, ID3D11VertexShader** vertexShader, string path, LPCSTR entrypoint, LPCSTR profile, D3D_SHADER_MACRO* macros)
+	bool D3D11Shader::CompileVertexShader(ID3D10Blob** vsBlob, ID3D11VertexShader** vertexShader, const string& path, LPCSTR entrypoint, LPCSTR profile, D3D_SHADER_MACRO* macros)
 	{
 		if (!m_graphics->GetDevice())
 			return false;
@@ -224,7 +230,7 @@ namespace Directus
 		return true;
 	}
 
-	bool D3D11Shader::CompilePixelShader(ID3D10Blob** psBlob, ID3D11PixelShader** pixelShader, string path, LPCSTR entrypoint, LPCSTR profile, D3D_SHADER_MACRO* macros)
+	bool D3D11Shader::CompilePixelShader(ID3D10Blob** psBlob, ID3D11PixelShader** pixelShader, const string& path, LPCSTR entrypoint, LPCSTR profile, D3D_SHADER_MACRO* macros)
 	{
 		if (!m_graphics->GetDevice())
 			return false;
@@ -245,12 +251,12 @@ namespace Directus
 		return true;
 	}
 
-	bool D3D11Shader::CompileShader(string filePath, D3D_SHADER_MACRO* macros, LPCSTR entryPoint, LPCSTR target, ID3DBlob** shaderBlobOut)
+	bool D3D11Shader::CompileShader(const string& filePath, D3D_SHADER_MACRO* macros, LPCSTR entryPoint, LPCSTR target, ID3DBlob** shaderBlobOut)
 	{
 		unsigned compileFlags = D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3;
-		#ifdef DEBUG
+#ifdef DEBUG
 		compileFlags |= D3DCOMPILE_DEBUG | D3DCOMPILE_PREFER_FLOW_CONTROL;
-		#endif
+#endif
 
 		// Load and compile from file
 		ID3DBlob* errorBlob = nullptr;
@@ -314,9 +320,9 @@ namespace Directus
 	}
 
 	//= REFLECTION ================================================================================================================
-	vector<D3D11_INPUT_ELEMENT_DESC> D3D11Shader::Reflect(ID3D10Blob* vsBlob) const
+	D3D11Shader::InputLayoutDesc D3D11Shader::Reflect(ID3D10Blob* vsBlob) const
 	{
-		vector<D3D11_INPUT_ELEMENT_DESC> inputLayoutDesc;
+		InputLayoutDesc inputLayoutDesc;
 
 		ID3D11ShaderReflection* reflector = nullptr;
 		if (FAILED(D3DReflect(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), IID_ID3D11ShaderReflection, (void**)&reflector)))
@@ -337,12 +343,14 @@ namespace Directus
 
 			// fill out input element desc
 			D3D11_INPUT_ELEMENT_DESC elementDesc;
-			elementDesc.SemanticName = paramDesc.SemanticName;
-			elementDesc.SemanticIndex = paramDesc.SemanticIndex;
-			elementDesc.InputSlot = 0;
-			elementDesc.AlignedByteOffset = D3D11_APPEND_ALIGNED_ELEMENT;
-			elementDesc.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-			elementDesc.InstanceDataStepRate = 0;
+
+			inputLayoutDesc.second.emplace_back(paramDesc.SemanticName);
+			elementDesc.SemanticName			= nullptr;
+			elementDesc.SemanticIndex			= paramDesc.SemanticIndex;
+			elementDesc.InputSlot				= 0;
+			elementDesc.AlignedByteOffset		= D3D11_APPEND_ALIGNED_ELEMENT;
+			elementDesc.InputSlotClass			= D3D11_INPUT_PER_VERTEX_DATA;
+			elementDesc.InstanceDataStepRate	= 0;
 
 			// determine DXGI format
 			if (paramDesc.Mask == 1)
@@ -350,27 +358,31 @@ namespace Directus
 				if (paramDesc.ComponentType == D3D_REGISTER_COMPONENT_UINT32) elementDesc.Format = DXGI_FORMAT_R32_UINT;
 				else if (paramDesc.ComponentType == D3D_REGISTER_COMPONENT_SINT32) elementDesc.Format = DXGI_FORMAT_R32_SINT;
 				else if (paramDesc.ComponentType == D3D_REGISTER_COMPONENT_FLOAT32) elementDesc.Format = DXGI_FORMAT_R32_FLOAT;
+				elementDesc.AlignedByteOffset = 4;
 			}
 			else if (paramDesc.Mask <= 3)
 			{
 				if (paramDesc.ComponentType == D3D_REGISTER_COMPONENT_UINT32) elementDesc.Format = DXGI_FORMAT_R32G32_UINT;
 				else if (paramDesc.ComponentType == D3D_REGISTER_COMPONENT_SINT32) elementDesc.Format = DXGI_FORMAT_R32G32_SINT;
 				else if (paramDesc.ComponentType == D3D_REGISTER_COMPONENT_FLOAT32) elementDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
+				elementDesc.AlignedByteOffset = 8;
 			}
 			else if (paramDesc.Mask <= 7)
 			{
 				if (paramDesc.ComponentType == D3D_REGISTER_COMPONENT_UINT32) elementDesc.Format = DXGI_FORMAT_R32G32B32_UINT;
 				else if (paramDesc.ComponentType == D3D_REGISTER_COMPONENT_SINT32) elementDesc.Format = DXGI_FORMAT_R32G32B32_SINT;
 				else if (paramDesc.ComponentType == D3D_REGISTER_COMPONENT_FLOAT32) elementDesc.Format = DXGI_FORMAT_R32G32B32_FLOAT;
+				elementDesc.AlignedByteOffset = 12;
 			}
 			else if (paramDesc.Mask <= 15)
 			{
 				if (paramDesc.ComponentType == D3D_REGISTER_COMPONENT_UINT32) elementDesc.Format = DXGI_FORMAT_R32G32B32A32_UINT;
 				else if (paramDesc.ComponentType == D3D_REGISTER_COMPONENT_SINT32) elementDesc.Format = DXGI_FORMAT_R32G32B32A32_SINT;
 				else if (paramDesc.ComponentType == D3D_REGISTER_COMPONENT_FLOAT32) elementDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+				elementDesc.AlignedByteOffset = 16;
 			}
 
-			inputLayoutDesc.push_back(elementDesc);
+			inputLayoutDesc.first.push_back(elementDesc);
 		}
 		SafeRelease(reflector);
 

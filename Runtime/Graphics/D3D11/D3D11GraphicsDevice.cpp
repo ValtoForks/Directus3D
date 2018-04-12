@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,7 +22,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES ===========================
 #include "D3D11GraphicsDevice.h"
 #include "../../Logging/Log.h"
-#include "../../Core/Helper.h"
+#include "../../Core/EngineDefs.h"
 #include "../../Core/Settings.h"
 #include "../../FileSystem/FileSystem.h"
 //======================================
@@ -52,37 +52,38 @@ namespace Directus
 	};
 	//===============================================================
 
-	D3D11GraphicsDevice::D3D11GraphicsDevice(Context* context) : IGraphicsDevice(context)
+	D3D11GraphicsDevice::D3D11GraphicsDevice(Context* context) : IGraphics(context)
 	{
-		m_driverType = D3D_DRIVER_TYPE_HARDWARE;
-		m_featureLevel = D3D_FEATURE_LEVEL_11_0;
-		m_sdkVersion = D3D11_SDK_VERSION;
+		m_driverType				= D3D_DRIVER_TYPE_HARDWARE;
+		m_featureLevel				= D3D_FEATURE_LEVEL_11_0;
+		m_sdkVersion				= D3D11_SDK_VERSION;
 
-		m_inputLayout = PositionTextureTBN;
-		m_cullMode = CullBack;
-		m_primitiveTopology = TriangleList;
-		m_depthEnabled = true;
-		m_alphaBlendingEnabled = false;
-		m_device = nullptr;
-		m_deviceContext = nullptr;
-		m_swapChain = nullptr;
-		m_renderTargetView = nullptr;
-		m_displayModeList = nullptr;
-		m_displayModeCount = 0;
-		m_refreshRateNumerator = 0;
-		m_refreshRateDenominator = 0;
-		m_depthStencilBuffer = nullptr;
-		m_depthStencilStateEnabled = nullptr;
+		m_inputLayout				= PositionTextureTBN;
+		m_cullMode					= CullBack;
+		m_primitiveTopology			= TriangleList;
+		m_depthEnabled				= true;
+		m_alphaBlendingEnabled		= false;
+		m_device					= nullptr;
+		m_deviceContext				= nullptr;
+		m_swapChain					= nullptr;
+		m_renderTargetView			= nullptr;
+		m_displayModeList			= nullptr;
+		m_displayModeCount			= 0;
+		m_refreshRateNumerator		= 0;
+		m_refreshRateDenominator	= 0;
+		m_depthStencilBuffer		= nullptr;
+		m_depthStencilStateEnabled	= nullptr;
 		m_depthStencilStateDisabled = nullptr;
-		m_depthStencilView = nullptr;
-		m_rasterStateCullFront = nullptr;
-		m_rasterStateCullBack = nullptr;
-		m_rasterStateCullNone = nullptr;
-		m_blendStateAlphaEnabled = nullptr;
-		m_blendStateAlphaDisabled = nullptr;
-		m_drawHandle = nullptr;
-		m_initialized = false;
-		m_maxDepth = 1.0f;
+		m_depthStencilView			= nullptr;
+		m_rasterStateCullFront		= nullptr;
+		m_rasterStateCullBack		= nullptr;
+		m_rasterStateCullNone		= nullptr;
+		m_blendStateAlphaEnabled	= nullptr;
+		m_blendStateAlphaDisabled	= nullptr;
+		m_drawHandle				= nullptr;
+		m_initialized				= false;
+		m_maxDepth					= 1.0f;
+		m_viewport					= D3D11_VIEWPORT{};
 	}
 
 	D3D11GraphicsDevice::~D3D11GraphicsDevice()
@@ -182,11 +183,11 @@ namespace Directus
 
 			// Go through all the display modes and find the one that matches the screen width and height.
 			for (unsigned int i = 0; i < m_displayModeCount; i++)
-			{
+			{	
 				if (m_displayModeList[i].Width == (unsigned int)RESOLUTION_WIDTH && m_displayModeList[i].Height == (unsigned int)RESOLUTION_HEIGHT)
 				{
-					m_refreshRateNumerator = (unsigned int)m_displayModeList[i].RefreshRate.Numerator;
-					m_refreshRateDenominator = (unsigned int)m_displayModeList[i].RefreshRate.Denominator;
+					m_refreshRateNumerator		= (unsigned int)m_displayModeList[i].RefreshRate.Numerator;
+					m_refreshRateDenominator	= (unsigned int)m_displayModeList[i].RefreshRate.Denominator;
 					break;
 				}
 			}
@@ -195,9 +196,7 @@ namespace Directus
 
 		// Create swap chain
 		if (!CreateDeviceAndSwapChain(&m_device, &m_deviceContext, &m_swapChain))
-		{
 			return false;
-		}
 
 		//= RENDER TARGET VIEW =========================================================
 		{
@@ -373,11 +372,9 @@ namespace Directus
 
 		// Create a depth stencil state with depth enabled
 		ID3D11DepthStencilState* depthStencilStateTyped = (ID3D11DepthStencilState*)depthStencilState;
-		HRESULT result = m_device->CreateDepthStencilState(&desc, &depthStencilStateTyped);
-		if (FAILED(result))
-			return false;
+		auto result = m_device->CreateDepthStencilState(&desc, &depthStencilStateTyped);
 
-		return true;
+		return !FAILED(result);
 	}
 
 	bool D3D11GraphicsDevice::CreateDepthStencilBuffer()
@@ -400,11 +397,9 @@ namespace Directus
 		depthBufferDesc.MiscFlags = 0;
 
 		// Create the texture for the depth buffer using the filled out description.
-		HRESULT result = m_device->CreateTexture2D(&depthBufferDesc, nullptr, &m_depthStencilBuffer);
-		if (FAILED(result))
-			return false;
+		auto result = m_device->CreateTexture2D(&depthBufferDesc, nullptr, &m_depthStencilBuffer);
 
-		return true;
+		return !FAILED(result);
 	}
 
 	bool D3D11GraphicsDevice::CreateDepthStencilView()
@@ -419,11 +414,9 @@ namespace Directus
 		depthStencilViewDesc.Texture2D.MipSlice = 0;
 
 		// Create the depth stencil view.
-		HRESULT result = m_device->CreateDepthStencilView(m_depthStencilBuffer, &depthStencilViewDesc, &m_depthStencilView);
-		if (FAILED(result))
-			return false;
+		auto result = m_device->CreateDepthStencilView(m_depthStencilBuffer, &depthStencilViewDesc, &m_depthStencilView);
 
-		return true;
+		return !FAILED(result);
 	}
 	//========================================================================================================================
 

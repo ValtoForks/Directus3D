@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,8 +19,6 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#pragma once
-
 //= INCLUDES ========================
 #include "../Graphics/Mesh.h"
 #include "../Logging/Log.h"
@@ -38,13 +36,13 @@ using namespace Directus::Math;
 
 namespace Directus
 {
-	Mesh::Mesh(Context* context)
+	Mesh::Mesh(Context* context) : IResource(context)
 	{
-		// Resource
-		RegisterResource(Resource_Mesh);
+		//= IResource ===========
+		RegisterResource<Mesh>();
+		//=======================
 
-		m_context		= context;
-		m_modelName		= NOT_ASSIGNED_HASH;
+		m_modelName		= NOT_ASSIGNED;
 		m_vertexCount	= 0;
 		m_indexCount	= 0;
 		m_triangleCount = 0;
@@ -67,7 +65,7 @@ namespace Directus
 	void Mesh::Clear()
 	{
 		ClearGeometry();
-		m_modelName		= NOT_ASSIGNED_HASH;
+		m_modelName		= NOT_ASSIGNED;
 		m_vertexCount	= 0;
 		m_indexCount	= 0;
 		m_triangleCount = 0;
@@ -86,6 +84,7 @@ namespace Directus
 		file->Read(&m_indices);
 		file->Read(&m_modelName);
 		file->Read(&m_resourceName);
+		file->Read(&m_resourceFilePath);
 		
 		Construct();
 		ClearGeometry();
@@ -108,17 +107,23 @@ namespace Directus
 		file->Write(m_indices);
 		file->Write(m_modelName);
 		file->Write(m_resourceName);
+		file->Write(m_resourceFilePath);
 
 		return true;
 	}
 
-	unsigned int Mesh::GetMemoryUsageKB()
+	unsigned int Mesh::GetMemory()
 	{
-		unsigned int sizeKB = 0;
-		sizeKB += unsigned int(m_vertices.size() * sizeof(VertexPosTexTBN));
-		sizeKB += unsigned int(m_indices.size() * sizeof(unsigned int));
+		// Vertices & Indices
+		unsigned int size = 0;
+		size += unsigned int(m_vertices.size() * sizeof(VertexPosTexTBN));
+		size += unsigned int(m_indices.size() * sizeof(unsigned int));
 
-		return sizeKB / 1000;
+		// Buffers
+		size += m_vertexBuffer->GetMemoryUsage();
+		size += m_indexBuffer->GetMemoryUsage();
+
+		return size;
 	}
 
 	void Mesh::GetGeometry(vector<VertexPosTexTBN>* vertices, vector<unsigned>* indices)
@@ -211,7 +216,7 @@ namespace Directus
 			m_indexBuffer = make_shared<D3D11IndexBuffer>(graphics);
 			if (!m_indexBuffer->Create(m_indices))
 			{
-				LOG_ERROR("MeshFilter: Failed to create index buffer for \"" + m_resourceName + "\".");
+				LOG_ERROR("Mesh: Failed to create index buffer for \"" + m_resourceName + "\".");
 				success = false;
 			}
 		}

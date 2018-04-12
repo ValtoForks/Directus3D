@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -39,13 +39,12 @@ using namespace Directus::Math;
 
 #define LOG_FILE "log.txt"
 
-mutex Mutex;
-
 namespace Directus
 {
 	weak_ptr<ILogger> Log::m_logger;
 	ofstream Log::m_fout;
 	bool Log::m_firstLog = true;
+	mutex Log::m_mutex;
 
 	void Log::Initialize()
 	{
@@ -57,7 +56,7 @@ namespace Directus
 
 	}
 
-	void Log::SetLogger(weak_ptr<ILogger> logger)
+	void Log::SetLogger(const weak_ptr<ILogger>& logger)
 	{
 		m_logger = logger;
 	}
@@ -80,7 +79,7 @@ namespace Directus
 		Write(string(text), type);
 	}
 
-	void Log::Write(weak_ptr<GameObject> gameObject, LogType type)
+	void Log::Write(const weak_ptr<GameObject>& gameObject, LogType type)
 	{
 		gameObject.expired() ? Write("Null", type) : Write(gameObject.lock()->GetName(), type);
 	}
@@ -154,13 +153,13 @@ namespace Directus
 
 	void Log::LogString(const string& text, LogType type)
 	{
-		lock_guard<mutex> guard(Mutex);
+		lock_guard<mutex> guard(m_mutex);
 		m_logger.lock()->Log(text, type);
 	}
 
 	void Log::LogToFile(const string& text, LogType type)
 	{
-		lock_guard<mutex> guard(Mutex);
+		lock_guard<mutex> guard(m_mutex);
 
 		string prefix = (type == Info) ? "Info:" : (type == Warning) ? "Warning:" : "Error:";
 		string finalText = prefix + " " + text;

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "D3D11/D3D11ConstantBuffer.h"
 #include "../Core/Context.h"
 #include "../Logging/Log.h"
+#include "../Scene/Components/Light.h"
+#include "../Scene/Components/Camera.h"
 //====================================
 
 //= NAMESPACES ================
@@ -32,12 +34,43 @@ using namespace Directus::Math;
 using namespace std;
 //=============================
 
+// = ENUMERATIONS =========================================
+static const D3D11_FILTER filterAPI[] =
+{
+	D3D11_FILTER_MIN_MAG_MIP_POINT,
+	D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT,
+	D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+	D3D11_FILTER_ANISOTROPIC
+};
+
+static const D3D11_TEXTURE_ADDRESS_MODE addressModeAPI[] =
+{
+	D3D11_TEXTURE_ADDRESS_WRAP,
+	D3D11_TEXTURE_ADDRESS_MIRROR,
+	D3D11_TEXTURE_ADDRESS_CLAMP,
+	D3D11_TEXTURE_ADDRESS_BORDER,
+	D3D11_TEXTURE_ADDRESS_MIRROR_ONCE
+};
+
+static const D3D11_COMPARISON_FUNC comparisonFunctionAPI[]=
+{
+	D3D11_COMPARISON_NEVER,
+	D3D11_COMPARISON_LESS,
+	D3D11_COMPARISON_EQUAL,
+	D3D11_COMPARISON_LESS_EQUAL,
+	D3D11_COMPARISON_GREATER,
+	D3D11_COMPARISON_NOT_EQUAL,
+	D3D11_COMPARISON_GREATER_EQUAL,
+	D3D11_COMPARISON_ALWAYS
+};
+//=========================================================
+
 namespace Directus
 {
 	Shader::Shader(Context* context)
 	{
 		m_graphics = context->GetSubsystem<Graphics>();
-		m_bufferType = WVP;
+		m_bufferType = CB_WVP;
 		m_bufferScope = VertexShader;
 	}
 
@@ -46,7 +79,7 @@ namespace Directus
 
 	}
 
-	void Shader::Load(const string& filePath)
+	void Shader::Compile(const string& filePath)
 	{
 		if (!m_graphics)
 		{
@@ -59,7 +92,7 @@ namespace Directus
 			m_shader = make_unique<D3D11Shader>(m_graphics);
 		}
 
-		m_shader->Load(filePath);
+		m_shader->Compile(filePath);
 	}
 
 	void Shader::AddDefine(LPCSTR define)
@@ -81,43 +114,32 @@ namespace Directus
 
 		switch (m_bufferType)
 		{
-		case WVP:
-			m_constantBuffer->Create(sizeof(Struct_WVP));
-			break;
-		case W_V_P:
-			m_constantBuffer->Create(sizeof(Struct_W_V_P));
-			break;
-		case WVP_Color:
-			m_constantBuffer->Create(sizeof(Struct_WVP_Color));
-			break;
-		case WVP_Resolution:
-			m_constantBuffer->Create(sizeof(Struct_WVP_Resolution));
-		case WVP_WVPInverse_Resolution_Planes:
-			m_constantBuffer->Create(sizeof(Struct_WVP_WVPInverse_Resolution_Planes));
-			break;
+			case CB_WVP:
+				m_constantBuffer->Create(sizeof(Struct_WVP));
+				break;
+			case CB_W_V_P:
+				m_constantBuffer->Create(sizeof(Struct_W_V_P));
+				break;
+			case CB_WVP_Color:
+				m_constantBuffer->Create(sizeof(Struct_WVP_Color));
+				break;
+			case CB_WVP_Resolution:
+				m_constantBuffer->Create(sizeof(Struct_WVP_Resolution));
+			case CB_Shadowing:
+				m_constantBuffer->Create(sizeof(Struct_Shadowing));
+				break;
 		}
 	}
 
-	void Shader::AddSampler(TextureSampler samplerType)
+	bool Shader::AddSampler(Texture_Sampler_Filter filter, Texture_Address_Mode addressMode, Texture_Comparison_Function comparisonFunc)
 	{
 		if (!m_shader)
 		{
 			LOG_WARNING("Shader: Can't add sampler to uninitialized shader.");
-			return;
+			return false;
 		}
 
-		switch (samplerType)
-		{
-		case Anisotropic_Sampler:
-			m_shader->AddSampler(D3D11_FILTER_ANISOTROPIC, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_COMPARISON_ALWAYS);
-			break;
-		case Linear_Sampler:
-			m_shader->AddSampler(D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_COMPARISON_ALWAYS);
-			break;
-		case Point_Sampler:
-			m_shader->AddSampler(D3D11_FILTER_MIN_MAG_MIP_POINT, D3D11_TEXTURE_ADDRESS_WRAP, D3D11_COMPARISON_ALWAYS);
-			break;
-		}
+		return m_shader->AddSampler(filterAPI[filter], addressModeAPI[addressMode], comparisonFunctionAPI[comparisonFunc]);
 	}
 
 	void Shader::Set()
@@ -144,7 +166,7 @@ namespace Directus
 		if (!m_graphics)
 			return;
 
-		ID3D11ShaderResourceView* id3d11Srv = (ID3D11ShaderResourceView*)texture;
+		auto id3d11Srv = (ID3D11ShaderResourceView*)texture;
 		m_graphics->GetDeviceContext()->PSSetShaderResources(slot, 1, &id3d11Srv);
 	}
 
@@ -153,7 +175,7 @@ namespace Directus
 		if (!m_graphics)
 			return;
 
-		ID3D11ShaderResourceView** ptr = (ID3D11ShaderResourceView**)textures.data();
+		auto ptr = (ID3D11ShaderResourceView**)textures.data();
 		int length = (int)textures.size();
 		auto tex = vector<ID3D11ShaderResourceView*>(ptr, ptr + length);
 
@@ -168,17 +190,17 @@ namespace Directus
 			return;
 		}
 
-		if (m_bufferType == WVP)
+		if (m_bufferType == CB_WVP)
 		{
-			Struct_WVP* buffer = static_cast<Struct_WVP*>(m_constantBuffer->Map());
+			auto buffer = static_cast<Struct_WVP*>(m_constantBuffer->Map());
 			buffer->wvp = mWorld * mView * mProjection;
 		}
 		else
 		{
-			Struct_W_V_P* buffer = static_cast<Struct_W_V_P*>(m_constantBuffer->Map());
-			buffer->world = mWorld;
-			buffer->view = mView;
-			buffer->projection = mProjection;
+			auto buffer			= static_cast<Struct_W_V_P*>(m_constantBuffer->Map());
+			buffer->world		= mWorld;
+			buffer->view		= mView;
+			buffer->projection	= mProjection;
 		}
 
 		// Unmap buffer
@@ -196,11 +218,11 @@ namespace Directus
 		}
 
 		// Get a pointer of the buffer
-		Struct_WVP_Color* buffer = static_cast<Struct_WVP_Color*>(m_constantBuffer->Map());
+		auto buffer	= static_cast<Struct_WVP_Color*>(m_constantBuffer->Map());
 
 		// Fill the buffer
-		buffer->wvp = mWorld * mView * mProjection;
-		buffer->color = color;
+		buffer->wvp		= mWorld * mView * mProjection;
+		buffer->color	= color;
 
 		// Unmap buffer
 		m_constantBuffer->Unmap();
@@ -217,7 +239,7 @@ namespace Directus
 		}
 
 		// Get a pointer of the buffer
-		Struct_WVP_Resolution* buffer = static_cast<Struct_WVP_Resolution*>(m_constantBuffer->Map());
+		auto buffer = static_cast<Struct_WVP_Resolution*>(m_constantBuffer->Map());
 
 		// Fill the buffer
 		buffer->wvp = mWorld * mView * mProjection;
@@ -230,15 +252,7 @@ namespace Directus
 		SetBufferScope(m_constantBuffer.get(), slot);
 	}
 
-	void Shader::SetBuffer(
-		const Matrix& mWorldViewProjection, 
-		const Matrix& mWorldViewProjectionInverse, 
-		const Matrix& mView, 
-		const Matrix& mProjection, 
-		const Vector2& resolution, 
-		float nearPlane, 
-		float farPlane, 
-		unsigned slot)
+	void Shader::SetBuffer(const Matrix& mWVPortho, const Matrix& mWVPinv, const Matrix& mView, const Matrix& mProjection, const Vector2& resolution, Light* dirLight, Camera* camera, unsigned slot)
 	{
 		if (!m_constantBuffer)
 		{
@@ -247,17 +261,25 @@ namespace Directus
 		}
 
 		// Get a pointer of the buffer
-		Struct_WVP_WVPInverse_Resolution_Planes* buffer = static_cast<Struct_WVP_WVPInverse_Resolution_Planes*>(m_constantBuffer->Map());
+		auto buffer = static_cast<Struct_Shadowing*>(m_constantBuffer->Map());
 
 		// Fill the buffer
-		buffer->wvp = mWorldViewProjection;
-		buffer->wvpInverse = mWorldViewProjectionInverse;
-		buffer->view = mView;
-		buffer->projection = mProjection;
-		buffer->projectionInverse = mProjection.Inverted();
-		buffer->resolution = resolution;
-		buffer->nearPlane = nearPlane;
-		buffer->farPlane = farPlane;
+		buffer->wvpOrtho				= mWVPortho;
+		buffer->wvpInv					= mWVPinv;
+		buffer->view					= mView;
+		buffer->projection				= mProjection;
+		buffer->projectionInverse		= mProjection.Inverted();
+		buffer->mLightViewProjection[0] = dirLight->GetViewMatrix() * dirLight->GetOrthographicProjectionMatrix(0);
+		buffer->mLightViewProjection[1] = dirLight->GetViewMatrix() * dirLight->GetOrthographicProjectionMatrix(1);
+		buffer->mLightViewProjection[2] = dirLight->GetViewMatrix() * dirLight->GetOrthographicProjectionMatrix(2);
+		buffer->shadowSplits			= Vector4(dirLight->GetShadowCascadeSplit(1), dirLight->GetShadowCascadeSplit(2), 0, 0);
+		buffer->lightDir				= dirLight->GetDirection();
+		buffer->shadowMapResolution		= (float)dirLight->GetShadowCascadeResolution();
+		buffer->resolution				= resolution;
+		buffer->nearPlane				= camera->GetNearPlane();
+		buffer->farPlane				= camera->GetFarPlane();
+		buffer->doShadowMapping			= dirLight->GetCastShadows();
+		buffer->padding					= Vector3::Zero;
 
 		// Unmap buffer
 		m_constantBuffer->Unmap();

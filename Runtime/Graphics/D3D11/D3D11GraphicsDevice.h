@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,20 +21,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= LINKING =====================
-#pragma comment(lib, "d3d11.lib")
-#pragma comment(lib, "dxgi.lib")
-//===============================
-
-//= INCLUDES ==================
-#include "../IGraphicsDevice.h"
+//= INCLUDES ============
+#include "../IGraphics.h"
 #include <d3d11.h>
 #include <vector>
-//=============================
+//=======================
 
 namespace Directus
 {
-	class D3D11GraphicsDevice : public IGraphicsDevice
+	class D3D11GraphicsDevice : public IGraphics
 	{
 	public:
 		D3D11GraphicsDevice(Context* context);
@@ -97,7 +92,7 @@ namespace Directus
 		ID3D11DeviceContext* m_deviceContext;
 		IDXGISwapChain* m_swapChain;
 		ID3D11RenderTargetView* m_renderTargetView;
-		D3D11_VIEWPORT m_viewport;
+		D3D11_VIEWPORT m_viewport{};
 		unsigned int m_displayModeCount;
 		unsigned int m_refreshRateNumerator;
 		unsigned int m_refreshRateDenominator;

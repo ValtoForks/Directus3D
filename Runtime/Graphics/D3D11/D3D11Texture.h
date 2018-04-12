@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -35,22 +35,24 @@ namespace Directus
 		~D3D11Texture();
 
 		// Create from data
-		bool Create(int width, int height, int channels, const std::vector<unsigned char>& data, DXGI_FORMAT format);
+		bool Create(int width, int height, int channels, const std::vector<std::byte>& data, DXGI_FORMAT format);
 
 		// Creates from data with mimaps
-		bool Create(int width, int height, int channels, const std::vector<std::vector<unsigned char>>& mimaps, DXGI_FORMAT format);
+		bool Create(int width, int height, int channels, const std::vector<std::vector<std::byte>>& mipmaps, DXGI_FORMAT format);
 
 		// Creates a texture and generates mimaps (easy way to get mimaps 
 		// but not as high quality as the mimaps you can generate manually)
-		bool CreateAndGenerateMipmaps(int width, int height, int channels, const std::vector<unsigned char>& data, DXGI_FORMAT format);
-	
+		bool CreateAndGenerateMipmaps(int width, int height, int channels, const std::vector<std::byte>& data, DXGI_FORMAT format);
 
 		// Shader resource
 		ID3D11ShaderResourceView* GetShaderResourceView() { return m_shaderResourceView; }
 		void SetShaderResourceView(ID3D11ShaderResourceView* srv) { m_shaderResourceView = srv; }
 
+		unsigned int GetMemoryUsage() { return m_memoryUsage; }
+
 	private:
 		ID3D11ShaderResourceView* m_shaderResourceView;
 		D3D11GraphicsDevice* m_graphics;
+		unsigned int m_memoryUsage;
 	};
 }

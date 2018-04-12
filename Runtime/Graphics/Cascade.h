@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,7 +23,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES ==============
 #include <memory>
-#include "../Core/Helper.h"
+#include "../Core/EngineDefs.h"
 //=========================
 
 struct ID3D11ShaderResourceView;
@@ -39,7 +39,7 @@ namespace Directus
 		class Vector3;
 	}
 
-	class ENGINE_API Cascade
+	class ENGINE_CLASS Cascade
 	{
 	public:
 		Cascade(int resolution, Camera* camera, Context* context);
@@ -47,7 +47,7 @@ namespace Directus
 
 		void SetAsRenderTarget();
 		ID3D11ShaderResourceView* GetShaderResource();
-		Math::Matrix ComputeProjectionMatrix(int cascadeIndex, const Math::Vector3 centerPos, const Math::Matrix& viewMatrix);
+		Math::Matrix ComputeProjectionMatrix(int cascadeIndex, const Math::Vector3& centerPos, const Math::Matrix& viewMatrix);
 		float GetSplit(int cascadeIndex);
 
 	private:

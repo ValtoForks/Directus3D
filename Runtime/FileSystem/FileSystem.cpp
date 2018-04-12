@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,18 +19,19 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ====================
+//= INCLUDES ==============
 #include "FileSystem.h"
 #include <filesystem>
 #include <locale>
 #include <regex>
 #include "../Logging/Log.h"
-//===============================
+#include <Windows.h>
+//=========================
 
-//= NAMESPACES =========================
+//= NAMESPACES ==========================
 using namespace std;
-namespace fs = experimental::filesystem;
-//======================================
+using namespace experimental::filesystem;
+//=======================================
 
 namespace Directus
 {
@@ -45,168 +46,181 @@ namespace Directus
 	{
 		// Set supported image formats
 		{
-			m_supportedImageFormats.push_back(".jpg");
-			m_supportedImageFormats.push_back(".png");
-			m_supportedImageFormats.push_back(".bmp");
-			m_supportedImageFormats.push_back(".tga");
-			m_supportedImageFormats.push_back(".dds");
-			m_supportedImageFormats.push_back(".exr");
-			m_supportedImageFormats.push_back(".raw");
-			m_supportedImageFormats.push_back(".gif");
-			m_supportedImageFormats.push_back(".hdr");
-			m_supportedImageFormats.push_back(".ico");
-			m_supportedImageFormats.push_back(".iff");
-			m_supportedImageFormats.push_back(".jng");
-			m_supportedImageFormats.push_back(".jpeg");
-			m_supportedImageFormats.push_back(".koala");
-			m_supportedImageFormats.push_back(".kodak");
-			m_supportedImageFormats.push_back(".mng");
-			m_supportedImageFormats.push_back(".pcx");
-			m_supportedImageFormats.push_back(".pbm");
-			m_supportedImageFormats.push_back(".pgm");
-			m_supportedImageFormats.push_back(".ppm");
-			m_supportedImageFormats.push_back(".pfm");
-			m_supportedImageFormats.push_back(".pict");
-			m_supportedImageFormats.push_back(".psd");
-			m_supportedImageFormats.push_back(".raw");
-			m_supportedImageFormats.push_back(".sgi");
-			m_supportedImageFormats.push_back(".targa");
-			m_supportedImageFormats.push_back(".tiff");
-			m_supportedImageFormats.push_back(".tif"); // tiff can also be tif
-			m_supportedImageFormats.push_back(".wbmp");
-			m_supportedImageFormats.push_back(".webp");
-			m_supportedImageFormats.push_back(".xbm");
-			m_supportedImageFormats.push_back(".xpm");
+			m_supportedImageFormats.emplace_back(".jpg");
+			m_supportedImageFormats.emplace_back(".png");
+			m_supportedImageFormats.emplace_back(".bmp");
+			m_supportedImageFormats.emplace_back(".tga");
+			m_supportedImageFormats.emplace_back(".dds");
+			m_supportedImageFormats.emplace_back(".exr");
+			m_supportedImageFormats.emplace_back(".raw");
+			m_supportedImageFormats.emplace_back(".gif");
+			m_supportedImageFormats.emplace_back(".hdr");
+			m_supportedImageFormats.emplace_back(".ico");
+			m_supportedImageFormats.emplace_back(".iff");
+			m_supportedImageFormats.emplace_back(".jng");
+			m_supportedImageFormats.emplace_back(".jpeg");
+			m_supportedImageFormats.emplace_back(".koala");
+			m_supportedImageFormats.emplace_back(".kodak");
+			m_supportedImageFormats.emplace_back(".mng");
+			m_supportedImageFormats.emplace_back(".pcx");
+			m_supportedImageFormats.emplace_back(".pbm");
+			m_supportedImageFormats.emplace_back(".pgm");
+			m_supportedImageFormats.emplace_back(".ppm");
+			m_supportedImageFormats.emplace_back(".pfm");
+			m_supportedImageFormats.emplace_back(".pict");
+			m_supportedImageFormats.emplace_back(".psd");
+			m_supportedImageFormats.emplace_back(".raw");
+			m_supportedImageFormats.emplace_back(".sgi");
+			m_supportedImageFormats.emplace_back(".targa");
+			m_supportedImageFormats.emplace_back(".tiff");
+			m_supportedImageFormats.emplace_back(".tif"); // tiff can also be tif
+			m_supportedImageFormats.emplace_back(".wbmp");
+			m_supportedImageFormats.emplace_back(".webp");
+			m_supportedImageFormats.emplace_back(".xbm");
+			m_supportedImageFormats.emplace_back(".xpm");
 		}
 
 		// Set supported audio formats
 		{
-			m_supportedAudioFormats.push_back(".aiff");
-			m_supportedAudioFormats.push_back(".asf");
-			m_supportedAudioFormats.push_back(".asx");
-			m_supportedAudioFormats.push_back(".dls");
-			m_supportedAudioFormats.push_back(".flac");
-			m_supportedAudioFormats.push_back(".fsb");
-			m_supportedAudioFormats.push_back(".it");
-			m_supportedAudioFormats.push_back(".m3u");
-			m_supportedAudioFormats.push_back(".midi");
-			m_supportedAudioFormats.push_back(".mod");
-			m_supportedAudioFormats.push_back(".mp2");
-			m_supportedAudioFormats.push_back(".mp3");
-			m_supportedAudioFormats.push_back(".ogg");
-			m_supportedAudioFormats.push_back(".pls");
-			m_supportedAudioFormats.push_back(".s3m");
-			m_supportedAudioFormats.push_back(".vag"); // PS2/PSP
-			m_supportedAudioFormats.push_back(".wav");
-			m_supportedAudioFormats.push_back(".wax");
-			m_supportedAudioFormats.push_back(".wma");
-			m_supportedAudioFormats.push_back(".xm");
-			m_supportedAudioFormats.push_back(".xma"); // XBOX 360
+			m_supportedAudioFormats.emplace_back(".aiff");
+			m_supportedAudioFormats.emplace_back(".asf");
+			m_supportedAudioFormats.emplace_back(".asx");
+			m_supportedAudioFormats.emplace_back(".dls");
+			m_supportedAudioFormats.emplace_back(".flac");
+			m_supportedAudioFormats.emplace_back(".fsb");
+			m_supportedAudioFormats.emplace_back(".it");
+			m_supportedAudioFormats.emplace_back(".m3u");
+			m_supportedAudioFormats.emplace_back(".midi");
+			m_supportedAudioFormats.emplace_back(".mod");
+			m_supportedAudioFormats.emplace_back(".mp2");
+			m_supportedAudioFormats.emplace_back(".mp3");
+			m_supportedAudioFormats.emplace_back(".ogg");
+			m_supportedAudioFormats.emplace_back(".pls");
+			m_supportedAudioFormats.emplace_back(".s3m");
+			m_supportedAudioFormats.emplace_back(".vag"); // PS2/PSP
+			m_supportedAudioFormats.emplace_back(".wav");
+			m_supportedAudioFormats.emplace_back(".wax");
+			m_supportedAudioFormats.emplace_back(".wma");
+			m_supportedAudioFormats.emplace_back(".xm");
+			m_supportedAudioFormats.emplace_back(".xma"); // XBOX 360
 		}
 
 		// Set supported model formats
 		{
 			// Foreign formats
-			m_supportedModelFormats.push_back(".3ds");
-			m_supportedModelFormats.push_back(".obj");
-			m_supportedModelFormats.push_back(".fbx");
-			m_supportedModelFormats.push_back(".blend");
-			m_supportedModelFormats.push_back(".dae");
-			m_supportedModelFormats.push_back(".lwo");
-			m_supportedModelFormats.push_back(".c4d");
-			m_supportedModelFormats.push_back(".ase");
-			m_supportedModelFormats.push_back(".dxf");
-			m_supportedModelFormats.push_back(".hmp");
-			m_supportedModelFormats.push_back(".md2");
-			m_supportedModelFormats.push_back(".md3");
-			m_supportedModelFormats.push_back(".md5");
-			m_supportedModelFormats.push_back(".mdc");
-			m_supportedModelFormats.push_back(".mdl");
-			m_supportedModelFormats.push_back(".nff");
-			m_supportedModelFormats.push_back(".ply");
-			m_supportedModelFormats.push_back(".stl");
-			m_supportedModelFormats.push_back(".x");
-			m_supportedModelFormats.push_back(".smd");
-			m_supportedModelFormats.push_back(".lxo");
-			m_supportedModelFormats.push_back(".lws");
-			m_supportedModelFormats.push_back(".ter");
-			m_supportedModelFormats.push_back(".ac3d");
-			m_supportedModelFormats.push_back(".ms3d");
-			m_supportedModelFormats.push_back(".cob");
-			m_supportedModelFormats.push_back(".q3bsp");
-			m_supportedModelFormats.push_back(".xgl");
-			m_supportedModelFormats.push_back(".csm");
-			m_supportedModelFormats.push_back(".bvh");
-			m_supportedModelFormats.push_back(".b3d");
-			m_supportedModelFormats.push_back(".ndo");
+			m_supportedModelFormats.emplace_back(".3ds");
+			m_supportedModelFormats.emplace_back(".obj");
+			m_supportedModelFormats.emplace_back(".fbx");
+			m_supportedModelFormats.emplace_back(".blend");
+			m_supportedModelFormats.emplace_back(".dae");
+			m_supportedModelFormats.emplace_back(".lwo");
+			m_supportedModelFormats.emplace_back(".c4d");
+			m_supportedModelFormats.emplace_back(".ase");
+			m_supportedModelFormats.emplace_back(".dxf");
+			m_supportedModelFormats.emplace_back(".hmp");
+			m_supportedModelFormats.emplace_back(".md2");
+			m_supportedModelFormats.emplace_back(".md3");
+			m_supportedModelFormats.emplace_back(".md5");
+			m_supportedModelFormats.emplace_back(".mdc");
+			m_supportedModelFormats.emplace_back(".mdl");
+			m_supportedModelFormats.emplace_back(".nff");
+			m_supportedModelFormats.emplace_back(".ply");
+			m_supportedModelFormats.emplace_back(".stl");
+			m_supportedModelFormats.emplace_back(".x");
+			m_supportedModelFormats.emplace_back(".smd");
+			m_supportedModelFormats.emplace_back(".lxo");
+			m_supportedModelFormats.emplace_back(".lws");
+			m_supportedModelFormats.emplace_back(".ter");
+			m_supportedModelFormats.emplace_back(".ac3d");
+			m_supportedModelFormats.emplace_back(".ms3d");
+			m_supportedModelFormats.emplace_back(".cob");
+			m_supportedModelFormats.emplace_back(".q3bsp");
+			m_supportedModelFormats.emplace_back(".xgl");
+			m_supportedModelFormats.emplace_back(".csm");
+			m_supportedModelFormats.emplace_back(".bvh");
+			m_supportedModelFormats.emplace_back(".b3d");
+			m_supportedModelFormats.emplace_back(".ndo");
 		}
 
 		// Set supported shader formats
 		{
-			m_supportedShaderFormats.push_back(".hlsl");
+			m_supportedShaderFormats.emplace_back(".hlsl");
 		}
 
 		// Set supported script formats
 		{
-			m_supportedScriptFormats.push_back(".as");
+			m_supportedScriptFormats.emplace_back(".as");
 		}
 
 		// Set supported font formats
 		{
-			m_supportedScriptFormats.push_back(".ttf");
-			m_supportedScriptFormats.push_back(".ttc");
-			m_supportedScriptFormats.push_back(".cff");
-			m_supportedScriptFormats.push_back(".woff");
-			m_supportedScriptFormats.push_back(".otf");
-			m_supportedScriptFormats.push_back(".otc");
-			m_supportedScriptFormats.push_back(".pfa");
-			m_supportedScriptFormats.push_back(".pfb");
-			m_supportedScriptFormats.push_back(".fnt");
-			m_supportedScriptFormats.push_back(".bdf");
-			m_supportedScriptFormats.push_back(".pfr");
+			m_supportedScriptFormats.emplace_back(".ttf");
+			m_supportedScriptFormats.emplace_back(".ttc");
+			m_supportedScriptFormats.emplace_back(".cff");
+			m_supportedScriptFormats.emplace_back(".woff");
+			m_supportedScriptFormats.emplace_back(".otf");
+			m_supportedScriptFormats.emplace_back(".otc");
+			m_supportedScriptFormats.emplace_back(".pfa");
+			m_supportedScriptFormats.emplace_back(".pfb");
+			m_supportedScriptFormats.emplace_back(".fnt");
+			m_supportedScriptFormats.emplace_back(".bdf");
+			m_supportedScriptFormats.emplace_back(".pfr");
 		}
 	}
 
 	//= DIRECTORIES ======================================================================
 	bool FileSystem::CreateDirectory_(const string& path)
 	{
-		return fs::create_directories(path);
+		return create_directories(path);
 	}
 
 	bool FileSystem::DeleteDirectory(const string& directory)
 	{
-		return fs::remove_all(directory);
+		return remove_all(directory);
 	}
 
 	bool FileSystem::DirectoryExists(const string& directory)
 	{
-		return fs::exists(directory);
+		return exists(directory);
 	}
 
 	bool FileSystem::IsDirectory(const string& directory)
 	{
-		return fs::is_directory(directory);
+		return is_directory(directory);
 	}
+
+	void FileSystem::OpenDirectoryWindow(const std::string& directory)
+	{
+		int strLength	= (int)directory.length() + 1;
+		int len			= MultiByteToWideChar(CP_ACP, 0, directory.c_str(), strLength, nullptr, 0); 
+		wchar_t* buf	= new wchar_t[len];
+		MultiByteToWideChar(CP_ACP, 0, directory.c_str(), strLength, buf, len);
+		std::wstring wstr(buf);
+		delete[] buf;
+
+		ShellExecute(nullptr, nullptr, wstr.c_str(), nullptr, nullptr, SW_SHOW);
+	}
+
 	//====================================================================================
 
 	//= FILES ============================================================================
 	bool FileSystem::FileExists(const string& filePath)
 	{
-		return fs::exists(filePath);
+		return exists(filePath);
 	}
 
 	bool FileSystem::DeleteFile_(const string& filePath)
 	{
 		// If this is a directory path, return
-		if (fs::is_directory(filePath))
+		if (is_directory(filePath))
 			return false;
 
 		bool result = false;
 		try
 		{
-			result = fs::remove(filePath.c_str()) == 0;
+			result = remove(filePath.c_str()) == 0;
 		}
-		catch (fs::filesystem_error& e)
+		catch (filesystem_error& e)
 		{
 			LOG_ERROR("FileSystem: Could not delete \"" + filePath + "\". " + string(e.what()));
 		}
@@ -228,9 +242,9 @@ namespace Directus
 		bool result = false;
 		try 
 		{
-			result = copy_file(source, destination, fs::copy_options::overwrite_existing);
+			result = copy_file(source, destination, copy_options::overwrite_existing);
 		}
-		catch (fs::filesystem_error& e) 
+		catch (filesystem_error& e) 
 		{
 			LOG_ERROR("FileSystem: Could not copy \"" + source + "\". " + string(e.what()));
 		}
@@ -252,7 +266,7 @@ namespace Directus
 	{
 		string fileName = GetFileNameFromFilePath(filepath);
 
-		size_t lastindex = fileName.find_last_of(".");
+		size_t lastindex = fileName.find_last_of('.');
 		string fileNameNoExt = fileName.substr(0, lastindex);
 
 		return fileNameNoExt;
@@ -281,7 +295,7 @@ namespace Directus
 			return NOT_ASSIGNED;
 		}
 
-		size_t lastindex = filePath.find_last_of(".");
+		size_t lastindex = filePath.find_last_of('.');
 		if (string::npos != lastindex)
 		{
 			// extension with dot included
@@ -294,8 +308,8 @@ namespace Directus
 	vector<string> FileSystem::GetDirectoriesInDirectory(const string& directory)
 	{
 		vector<string> subDirs;
-		fs::directory_iterator end_itr; // default construction yields past-the-end
-		for (fs::directory_iterator itr(directory); itr != end_itr; ++itr)
+		directory_iterator end_itr; // default construction yields past-the-end
+		for (directory_iterator itr(directory); itr != end_itr; ++itr)
 		{
 			if (!is_directory(itr->status()))
 				continue;
@@ -309,8 +323,8 @@ namespace Directus
 	vector<string> FileSystem::GetFilesInDirectory(const string& directory)
 	{
 		vector<string> filePaths;
-		fs::directory_iterator end_itr; // default construction yields past-the-end
-		for (fs::directory_iterator itr(directory); itr != end_itr; ++itr)
+		directory_iterator end_itr; // default construction yields past-the-end
+		for (directory_iterator itr(directory); itr != end_itr; ++itr)
 		{
 			if (!is_regular_file(itr->status()))
 				continue;
@@ -559,116 +573,51 @@ namespace Directus
 	//= STRING PARSING =====================================================================
 	// Returns a file path which is relative to the engine
 	string FileSystem::GetRelativeFilePath(const string& absoluteFilePath)
-	{
-		string currentDir = GetWorkingDirectory();
-		string absoluteDir = absoluteFilePath;
+	{		
+		// create absolute paths
+		path p = absolute(absoluteFilePath);
+		path r = absolute(GetWorkingDirectory());
 
-		currentDir = ReplaceExpression(currentDir, "\"", "\\");
-		absoluteDir = ReplaceExpression(absoluteDir, "\"", "\\");
+		// if root paths are different, return absolute path
+		if( p.root_path() != r.root_path())
+		    return p.generic_string();
 
-		currentDir = ReplaceExpression(currentDir, "/", "\\");
-		absoluteDir = ReplaceExpression(absoluteDir, "/", "\\");
+		// initialize relative path
+		path result;
 
-		const int MAX_FILENAME_LEN = 512;
-		const int ABSOLUTE_NAME_START = 3;
-		const char SLASH = '\\';
-
-		int afMarker = 0, rfMarker = 0;
-		int i = 0;
-		int levels = 0;
-		static char relativeFilename[MAX_FILENAME_LEN + 1];
-		size_t cdLen = strlen(currentDir.c_str());
-		size_t afLen = strlen(absoluteDir.c_str());
-
-		// Make sure the paths are not too long or too short
-		if (cdLen > MAX_FILENAME_LEN || cdLen < ABSOLUTE_NAME_START + 1 ||
-			afLen > MAX_FILENAME_LEN || afLen < ABSOLUTE_NAME_START + 1)
+		// find out where the two paths diverge
+		path::const_iterator itr_path = p.begin();
+		path::const_iterator itr_relative_to = r.begin();
+		while( *itr_path == *itr_relative_to && itr_path != p.end() && itr_relative_to != r.end() ) 
 		{
-			return absoluteDir;
+		    ++itr_path;
+		    ++itr_relative_to;
 		}
 
-		// Make sure the paths are not on different drives
-		if (currentDir[0] != absoluteDir[0])
+		// add "../" for each remaining token in relative_to
+		if( itr_relative_to != r.end() ) 
 		{
-			return absoluteDir;
-		}
-
-		// Find out how much of the current directory is in the absolute filename
-		i = ABSOLUTE_NAME_START;
-		while (i < afLen && i < cdLen && currentDir[i] == absoluteDir[i])
-		{
-			i++;
-		}
-
-		if (i == cdLen && (absoluteDir[i] == SLASH || absoluteDir[i - 1] == SLASH))
-		{
-			// the whole current directory name is in the file name,
-			// so we just trim off the current directory name to get the
-			// current file name.
-			if (absoluteDir[i] == SLASH)
+		    ++itr_relative_to;
+		    while( itr_relative_to != r.end() ) 
 			{
-				// a directory name might have a trailing slash but a relative
-				// file name should not have a leading one...
-				i++;
-			}
-
-			strcpy_s(relativeFilename, &absoluteDir[i]);
-			return relativeFilename;
+		        result /= "..";
+		        ++itr_relative_to;
+		    }
 		}
 
-		// The file is not in a child directory of the current directory, so we
-		// need to step back the appropriate number of parent directories by
-		// using "..\"s.  First find out how many levels deeper we are than the
-		// common directory
-		afMarker = i;
-		levels = 1;
-		// count the number of directory levels we have to go up to get to the
-		// common directory
-		while (i < cdLen)
+		// add remaining path
+		while( itr_path != p.end() ) 
 		{
-			i++;
-			if (currentDir[i] == SLASH)
-			{
-				// make sure it's not a trailing slash
-				i++;
-				if (currentDir[i] != '\0')
-				{
-					levels++;
-				}
-			}
+		    result /= *itr_path;
+		    ++itr_path;
 		}
 
-		// Move the absolute filename marker back to the 
-		// start of the directory name that it has stopped in.
-		while (afMarker > 0 && absoluteDir[afMarker - 1] != SLASH)
-		{
-			afMarker--;
-		}
-
-		// Check that the result will not be too long
-		if (levels * 3 + afLen - afMarker > MAX_FILENAME_LEN)
-		{
-			return absoluteDir;
-		}
-
-		// Add the appropriate number of "..\"s.
-		rfMarker = 0;
-		for (i = 0; i < levels; i++)
-		{
-			relativeFilename[rfMarker++] = '.';
-			relativeFilename[rfMarker++] = '.';
-			relativeFilename[rfMarker++] = SLASH;
-		}
-
-		// Copy the rest of the filename into the result string
-		strcpy(&relativeFilename[rfMarker], &absoluteDir[afMarker]);
-
-		return relativeFilename;
+		return result.generic_string();
 	}
 
 	string FileSystem::GetWorkingDirectory()
 	{
-		return fs::current_path().generic_string() + "/";
+		return current_path().generic_string() + "/";
 	}
 
 	string FileSystem::GetParentDirectory(const string& directory)

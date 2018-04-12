@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,7 +22,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #pragma once
 
 //= INCLUDES =================
-#include "../Core/Subsystem.h"
+#include "../Core/SubSystem.h"
 #include <memory>
 //============================
 
@@ -59,7 +59,7 @@ namespace Directus
 		//=========================
 
 		// Step the world
-		void Step(Variant deltaTime);
+		void Step(const Variant& deltaTime);
 		// Remove everything from the world
 		void Clear();
 		// Draw debug geometry
@@ -67,7 +67,7 @@ namespace Directus
 		// Return the world
 		std::shared_ptr<btDiscreteDynamicsWorld> GetWorld() { return m_world; }
 		// Return the world's gravity
-		const Math::Vector3& GetGravity();
+		Math::Vector3 GetGravity();
 
 		PhysicsDebugDraw* GetPhysicsDebugDraw() { return m_debugDraw.get(); }
 		bool IsSimulating() { return m_simulating; }

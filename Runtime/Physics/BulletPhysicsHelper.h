@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,12 +21,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES =======================
-#include "LinearMath/btQuaternion.h"
+//= INCLUDES ==========================
 #include "../Math/Vector3.h"
 #include "../Math/Vector4.h"
 #include "../Math/Quaternion.h"
-//==================================
+// Hide warnings which belong to Bullet
+#pragma warning(push, 0) 
+#include "LinearMath/btQuaternion.h"
+#pragma warning(pop)
+//=====================================
 
 inline Directus::Math::Vector3 ToVector3(const btVector3& vector)
 {
@@ -45,12 +48,10 @@ inline btVector3 ToBtVector3(Directus::Math::Vector3 vector)
 
 inline btQuaternion ToBtQuaternion(Directus::Math::Quaternion quaternion)
 {
-	// Bullet assumes a right handed system, while the engine is left, so the axes need to be negated.
-	return btQuaternion(-quaternion.x, -quaternion.y, -quaternion.z, quaternion.w);
+	return btQuaternion(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
 }
 
 inline Directus::Math::Quaternion ToQuaternion(const btQuaternion& quaternion)
 {
-	// Bullet assumes a right handed system, while the engine is left, so the axes need to be negated.
-	return Directus::Math::Quaternion(-quaternion.getX(), -quaternion.getY(), -quaternion.getZ(), quaternion.getW());
+	return Directus::Math::Quaternion(quaternion.getX(), quaternion.getY(), quaternion.getZ(), quaternion.getW());
 }

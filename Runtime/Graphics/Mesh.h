@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,13 +21,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ====================
+//= INCLUDES =====================
 #include <vector>
 #include <memory>
 #include "Vertex.h"
 #include "../Math/BoundingBox.h"
-#include "../Resource/Resource.h"
-//===============================
+#include "../Resource/IResource.h"
+//================================
 
 namespace Directus
 {
@@ -36,7 +36,7 @@ namespace Directus
 	class D3D11VertexBuffer;
 	class D3D11IndexBuffer;
 
-	class Mesh : public Resource
+	class Mesh : public IResource
 	{
 	public:
 		Mesh(Context* context);
@@ -47,7 +47,7 @@ namespace Directus
 		//= RESOURCE INTERFACE =================================
 		bool LoadFromFile(const std::string& filePath) override;
 		bool SaveToFile(const std::string& filePath) override;
-		unsigned int GetMemoryUsageKB() override;
+		unsigned int GetMemory() override;
 		//======================================================
 
 		//= GEOMETRY ================================================================================
@@ -98,6 +98,5 @@ namespace Directus
 		std::shared_ptr<D3D11VertexBuffer> m_vertexBuffer;
 		std::shared_ptr<D3D11IndexBuffer> m_indexBuffer;
 		Math::BoundingBox m_boundingBox;
-		Context* m_context;
 	};
 }

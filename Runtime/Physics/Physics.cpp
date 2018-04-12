@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,19 +23,23 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Physics.h"
 #include "../Core/Context.h"
 #include "../Core/Engine.h"
-#include "../Core/Helper.h"
+#include "../Core/EngineDefs.h"
 #include "../Logging/Log.h"
-#include "../EventSystem/EventSystem.h"
+#include "../Core/EventSystem.h"
 #include "PhysicsDebugDraw.h"
 #include "BulletPhysicsHelper.h"
+#include "../Core/Settings.h"
+#include "../Profiling/Profiler.h"
+#pragma warning(push, 0) // Hide warnings which belong to Bullet
 #include "BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
 #include "BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
 #include "BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
 #include "BulletDynamics/ConstraintSolver/btTypedConstraint.h"
 #include "BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h"
 #include "BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
-#include "../Core/Settings.h"
+#pragma warning(pop)
 //==============================================================================
+
 
 //= NAMESPACES ================
 using namespace std;
@@ -91,23 +95,28 @@ namespace Directus
 		// Log version
 		string major = to_string(btGetVersion() / 100);
 		string minor = to_string(btGetVersion()).erase(0, 1);
-		Settings::g_versionBullet = major + "." + minor;
-		LOG_INFO("Physics: Bullet " + Settings::g_versionBullet);
+		Settings::Get().g_versionBullet = major + "." + minor;
+		LOG_INFO("Physics: Bullet " + Settings::Get().g_versionBullet);
 
 		return true;
 	}
 
-	void Physics::Step(Variant deltaTime)
+	void Physics::Step(const Variant& deltaTime)
 	{
 		if (!m_world)
 			return;
-
-		// Don't simulate physics if they are turned of
-		if (!m_context->GetSubsystem<Engine>()->GetFlags() & Engine_Physics)
+		
+		// Don't simulate physics if they are turned off
+		if (!Engine::EngineMode_IsSet(Engine_Physics))
 			return;
 
-		// Convert milliseconds to seconds (required by Bullet)
-		float timeStep = deltaTime.GetFloat() / 1000.0f;
+		// Don't simulate physics if they engine is not in game mode
+		if (!Engine::EngineMode_IsSet(Engine_Game))
+			return;
+
+		PROFILE_FUNCTION_BEGIN();
+
+		float timeStep = VARIANT_GET_FROM(float, deltaTime);
 
 		// This equation must be met: timeStep < maxSubSteps * fixedTimeStep
 		float internalTimeStep = 1.0f / INTERNAL_FPS;
@@ -128,6 +137,8 @@ namespace Directus
 		m_world->stepSimulation(timeStep, maxSubsteps, internalTimeStep);
 
 		m_simulating = false;
+
+		PROFILE_FUNCTION_END();
 	}
 
 	void Physics::Clear()
@@ -159,11 +170,11 @@ namespace Directus
 
 	void Physics::DebugDraw()
 	{
-		m_debugDraw->ClearLines();
+		m_debugDraw->Clear();
 		m_world->debugDrawWorld();
 	}
 
-	const Vector3& Physics::GetGravity()
+	Vector3 Physics::GetGravity()
 	{
 		return ToVector3(m_world->getGravity());
 	}

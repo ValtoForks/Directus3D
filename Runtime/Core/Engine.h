@@ -20,53 +20,65 @@ DEALINGS IN THE SOFTWARE. */
 #include "Context.h"
 //==================
 
-#define ENGINE_VERSION "v0.3 (alpha)"
+#define ENGINE_VERSION "v0.3 alpha"
+#define WIN32_LEAN_AND_MEAN
 
 namespace Directus
 {
-	enum EngineFlags
+	enum Engine_Mode : unsigned long
 	{
-		Engine_Physics,
-		Engine_Update,
-		Engine_Render
+		Engine_Update	= 1UL << 0,	// Should the engine update?
+		Engine_Physics	= 1UL << 1, // Should physics update?	
+		Engine_Render	= 1UL << 2,	// Should the engine render?
+		Engine_Game		= 1UL << 3,	// Is the engine running in game or editor mode?
 	};
 
 	class Timer;
 
-	class ENGINE_API Engine : public Subsystem
+	class ENGINE_CLASS Engine : public Subsystem
 	{
 	public:
 		Engine(Context* context);
 		~Engine() { Shutdown(); }
 
-		// Sets a draw handle, input handle and a window instance for the engine to use
-		void SetHandles(void* instance, void* mainWindowHandle, void* drawPaneHandle);
-
 		//= SUBSYSTEM =============
 		bool Initialize() override;
 		//=========================
 
-		// Performs a complete simulation cycle (used to run your game)
-		void Update();
-
-		// Returns whether the engine is running in editor or game mode
-		int GetFlags() { return m_flags; }
-		void SetFlags(int flags) { m_flags = flags; }
-
-		bool IsUpdating();
-		bool IsRendering();
-
-		// Returns the current context
-		Context* GetContext() { return m_context; }
-
+		// Performs a complete simulation cycle
+		void Tick();
 		// Shuts down the engine
 		void Shutdown();
 
+		//= ENGINE MODE FLAGS  =====================================================================================================
+		// Returns all engine mode flags
+		static unsigned long EngineMode_GetAll()			{ return m_flags; }
+		// Set's all engine mode flags
+		static void EngineMode_SetAll(unsigned long flags)	{ m_flags = flags; }
+		// Enables an engine mode flag
+		static void EngineMode_Enable(Engine_Mode flag)		{ m_flags |= flag; }
+		// Removes an engine mode flag
+		static void EngineMode_Disable(Engine_Mode flag)	{ m_flags &= ~flag; }
+		// Toggles an engine mode flag
+		static void EngineMode_Toggle(Engine_Mode flag)		{ m_flags = !EngineMode_IsSet(flag) ? m_flags | flag : m_flags & ~flag;}
+		// Returns whether engine mode flag is set
+		static bool EngineMode_IsSet(Engine_Mode flag)		{ return m_flags & flag; }
+		//==========================================================================================================================
+
+		//= WINDOW ========================================================================
+		static void SetHandles(void* drawHandle, void* windowHandle, void* windowInstance);
+		static void* GetWindowHandle() { return m_windowHandle; }
+		static void* GetWindowInstance() { return m_windowInstance; }
+		//=================================================================================
+
+		// Returns the engine's context
+		Context* GetContext() { return m_context; }
+
 	private:
-		void* m_hinstance{};
-		void* m_windowHandle{};
-		void* m_drawHandle{};
-		int m_flags;
+		static void* m_drawHandle;	
+		static void* m_windowHandle;
+		static void* m_windowInstance;
+		static unsigned long m_flags;
 		Timer* m_timer;
 	};
 }

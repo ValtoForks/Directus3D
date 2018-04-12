@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,22 +19,15 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= LINKING ==========================
-// Required by DDSTextureLoader when using Windows 10 SDK
-//#pragma comment(lib, "WindowsApp.lib")
-//====================================
-
-
 //= INCLUDES =====================================
 #include "Texture.h"
 #include "../Logging/Log.h"
-#include "../Core/Helper.h"
+#include "../Core/EngineDefs.h"
 #include "../Resource/Import/ImageImporter.h"
 #include "../Resource/Import/DDSTextureImporter.h"
 #include "../Resource/ResourceManager.h"
 #include "D3D11/D3D11Texture.h"
 #include "../IO/FileStream.h"
-#include "../Core/Stopwatch.h"
 //================================================
 
 //= NAMESPACES =====
@@ -65,34 +58,35 @@ namespace Directus
 		DXGI_FORMAT_R8_UNORM
 	};
 
-	Texture::Texture(Context* context)
+	Texture::Texture(Context* context) : IResource(context)
 	{
-		// Resource
-		RegisterResource(Resource_Texture);
+		//= IResource ==============
+		RegisterResource<Texture>();
+		//==========================
 
 		// Texture
-		m_context			= context;
 		m_isUsingMipmaps	= true;
 		m_textureAPI		= make_shared<D3D11Texture>(m_context->GetSubsystem<Graphics>());
 	}
 
 	Texture::~Texture()
 	{
-		ClearTextureBits();
+		ClearTextureBytes();
 	}
 
 	//= RESOURCE INTERFACE =====================================================================
 	bool Texture::SaveToFile(const string& filePath)
 	{
-		Serialize(filePath); // Async maybe?
-		return true;
+		return Serialize(filePath);
 	}
 
-	bool Texture::LoadFromFile(const string& filePath)
+	bool Texture::LoadFromFile(const string& rawFilePath)
 	{
-		Stopwatch timer;
 		bool loaded = false;
-		SetAsyncState(Async_Started);
+		GetLoadState(LoadState_Started);
+
+		// Make the path, relative to the engine
+		auto filePath = FileSystem::GetRelativeFilePath(rawFilePath);
 
 		// engine format (binary)
 		if (FileSystem::IsEngineTextureFile(filePath)) 
@@ -108,57 +102,43 @@ namespace Directus
 		if (!loaded)
 		{
 			LOG_ERROR("Texture: Failed to load \"" + filePath + "\".");
-			SetAsyncState(Async_Failed);
+			GetLoadState(LoadState_Failed);
 			return false;
 		}
 
-		// Create shader resource only if this texture is intended for internal use (by the engine)
-		if (m_usage == TextureUsage_Internal)
+		// DDS textures load directly as a shader resource, no need to do it here
+		if (FileSystem::GetExtensionFromFilePath(filePath) != ".dds")
 		{
-			// DDS textures load directly as a shader resource, no need to do it here
-			if (FileSystem::GetExtensionFromFilePath(filePath) != ".dds")
+			if (CreateShaderResource())
 			{
-				if (CreateShaderResource())
+				// If the texture was loaded from an image file, it's not 
+				// saved yet, hence we have to maintain it's texture bits.
+				// However, if the texture was deserialized (engine format) 
+				// then we no longer need the texture bits. 
+				// We free them here to free up some memory.
+				if (FileSystem::IsEngineTextureFile(filePath))
 				{
-					// If the texture was loaded from an image file, it's not 
-					// saved yet, hence we have to maintain it's texture bits.
-					// However, if the texture was deserialized (engine format) 
-					// then we no longer need the texture bits. 
-					// We free them here to free up some memory.
-					if (FileSystem::IsEngineTextureFile(filePath))
-					{
-						ClearTextureBits();
-					}
+					ClearTextureBytes();
 				}
 			}
 		}
 
-		SetAsyncState(Async_Completed);
-		LOG_INFO("Texture: Loading \"" + FileSystem::GetFileNameFromFilePath(filePath) + "\" took " + to_string(timer.GetElapsedTimeMs()) + " ms");
-
+		GetLoadState(LoadState_Completed);
 		return true;
 	}
 
-	unsigned int Texture::GetMemoryUsageKB()
+	unsigned int Texture::GetMemory()
 	{
 		// Compute texture bits (in case they are loaded)
-		unsigned int memoryKB = 0;
-		for (const auto& mip : m_textureBits)
+		unsigned int size = 0;
+		for (const auto& mip : m_textureBytes)
 		{
-			memoryKB += (unsigned int)mip.size();
+			size += (unsigned int)mip.size();
 		}
 
 		// Compute shader resource (in case it's created)
-		if (m_textureAPI->GetShaderResourceView())
-		{
-			GUID guid;
-			unsigned int size = 0;
-			void* data = nullptr;
-			m_textureAPI->GetShaderResourceView()->GetPrivateData(guid, &size, &data);
-			memoryKB += sizeof(&data);
-		}
-
-		return memoryKB / 1000;
+		size += m_textureAPI->GetMemoryUsage();
+		return size;
 	}
 
 	//=====================================================================================
@@ -184,22 +164,22 @@ namespace Directus
 	//=======================================================
 
 	//= TEXTURE BITS =================================================================
-	void Texture::ClearTextureBits()
+	void Texture::ClearTextureBytes()
 	{
-		for (auto& mip : m_textureBits)
+		for (auto& mip : m_textureBytes)
 		{
 			mip.clear();
 			mip.shrink_to_fit();
 		}
-		m_textureBits.clear();
-		m_textureBits.shrink_to_fit();
+		m_textureBytes.clear();
+		m_textureBytes.shrink_to_fit();
 	}
 
-	void Texture::GetTextureBits(vector<vector<unsigned char>>* textureBits)
+	void Texture::GetTextureBytes(vector<vector<std::byte>>* textureBytes)
 	{
-		if (!m_textureBits.empty())
+		if (!m_textureBytes.empty())
 		{
-			textureBits = &m_textureBits;
+			textureBytes = &m_textureBytes;
 			return;
 		}
 
@@ -210,13 +190,13 @@ namespace Directus
 		unsigned int mipCount = file->ReadUInt();
 		for (unsigned int i = 0; i < mipCount; i++)
 		{
-			textureBits->emplace_back(vector<unsigned char>());
-			file->Read(&m_textureBits[i]);
+			textureBytes->emplace_back(vector<std::byte>());
+			file->Read(&m_textureBytes[i]);
 		}
 	}
 	//================================================================================
 
-	bool Texture::CreateShaderResource(unsigned int width, unsigned int height, unsigned int channels, vector<unsigned char> rgba, TextureFormat format)
+	bool Texture::CreateShaderResource(unsigned int width, unsigned int height, unsigned int channels, const vector<std::byte>& rgba, TextureFormat format)
 	{
 		if (!m_textureAPI->Create(width, height, channels, rgba, apiTextureFormat[format]))
 		{
@@ -237,7 +217,7 @@ namespace Directus
 
 		if (!m_isUsingMipmaps)
 		{
-			if (!m_textureAPI->Create(m_width, m_height, m_channels, m_textureBits[0], apiTextureFormat[m_format]))
+			if (!m_textureAPI->Create(m_width, m_height, m_channels, m_textureBytes[0], apiTextureFormat[m_format]))
 			{
 				LOG_ERROR("Texture: Failed to create shader resource for \"" + m_resourceFilePath + "\".");
 				return false;
@@ -245,7 +225,7 @@ namespace Directus
 		}
 		else
 		{
-			if (!m_textureAPI->Create(m_width, m_height, m_channels, m_textureBits, apiTextureFormat[m_format]))
+			if (!m_textureAPI->Create(m_width, m_height, m_channels, m_textureBytes, apiTextureFormat[m_format]))
 			{
 				LOG_ERROR("Texture: Failed to create shader resource with mipmaps for \"" + m_resourceFilePath + "\".");
 				return false;
@@ -317,17 +297,20 @@ namespace Directus
 		// If the texture bits has been cleared, load it again
 		// as we don't want to replaced existing data with nothing.
 		// If the texture bits are not cleared, no loading will take place.
-		GetTextureBits(&m_textureBits);
+		GetTextureBytes(&m_textureBytes);
 
 		auto file = make_unique<FileStream>(filePath, FileStreamMode_Write);
 		if (!file->IsOpen())
 			return false;
 
-		file->Write((unsigned int)m_textureBits.size());
-		for (auto& mip : m_textureBits)
+		// Write texture bits
+		file->Write((unsigned int)m_textureBytes.size());
+		for (auto& mip : m_textureBytes)
 		{
 			file->Write(mip);
 		}
+
+		// Write properties
 		file->Write((int)m_type);
 		file->Write(m_bpp);
 		file->Write(m_width);
@@ -336,6 +319,11 @@ namespace Directus
 		file->Write(m_isGrayscale);
 		file->Write(m_isTransparent);
 		file->Write(m_isUsingMipmaps);
+		file->Write(m_resourceID);
+		file->Write(m_resourceName);
+		file->Write(m_resourceFilePath);
+
+		ClearTextureBytes();
 
 		return true;
 	}
@@ -346,14 +334,16 @@ namespace Directus
 		if (!file->IsOpen())
 			return false;
 
-		ClearTextureBits();
-
+		// Read texture bits
+		ClearTextureBytes();
 		unsigned int mipCount = file->ReadUInt();
 		for (unsigned int i = 0; i < mipCount; i++)
 		{
-			m_textureBits.emplace_back(vector<unsigned char>());
-			file->Read(&m_textureBits[i]);
+			m_textureBytes.emplace_back(vector<std::byte>());
+			file->Read(&m_textureBytes[i]);
 		}
+
+		// Read properties
 		m_type = (TextureType)file->ReadInt();
 		file->Read(&m_bpp);
 		file->Read(&m_width);
@@ -362,6 +352,9 @@ namespace Directus
 		file->Read(&m_isGrayscale);
 		file->Read(&m_isTransparent);
 		file->Read(&m_isUsingMipmaps);
+		file->Read(&m_resourceID);
+		file->Read(&m_resourceName);
+		file->Read(&m_resourceFilePath);
 
 		return true;
 	}

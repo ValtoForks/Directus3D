@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,10 +21,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ====================
-#include "../Resource/Resource.h"
+//= INCLUDES =====================
+#include "../Resource/IResource.h"
 #include <memory>
-//===============================
+//================================
 
 namespace Directus
 {
@@ -52,15 +52,7 @@ namespace Directus
 		R_8_UNORM
 	};
 
-	enum TextureUsage
-	{
-		TextureUsage_Internal,
-		// When set as external, no shader resource will automatically created and
-		// no texture bits removed for memory. The creator has full control.
-		TextureUsage_External
-	};
-
-	class ENGINE_API Texture : public Resource
+	class ENGINE_CLASS Texture : public IResource
 	{
 	public:
 		// Used by the engine for all textures
@@ -71,10 +63,10 @@ namespace Directus
 		//= RESOURCE INTERFACE =================================
 		bool SaveToFile(const std::string& filePath) override;
 		bool LoadFromFile(const std::string& filePath) override;
-		unsigned int GetMemoryUsageKB() override;
+		unsigned int GetMemory() override;
 		//======================================================
 
-		//= PROPERTIES ==========================================================================================
+		//= PROPERTIES =======================================================================================
 		unsigned int GetWidth() { return m_width; }
 		void SetWidth(unsigned int width) { m_width = width; }
 
@@ -96,19 +88,17 @@ namespace Directus
 		unsigned int GetChannels() { return m_channels; }
 		void SetChannels(unsigned int channels) { m_channels = channels; }
 
-		std::vector<std::vector<unsigned char>>& GetRGBA() { return m_textureBits; }
-		void SetRGBA(const std::vector<std::vector<unsigned char>>& textureBits) { m_textureBits = textureBits; }
+		std::vector<std::vector<std::byte>>& GetRGBA() { return m_textureBytes; }
+		void SetRGBA(const std::vector<std::vector<std::byte>>& textureBits) { m_textureBytes = textureBits; }
 
 		void EnableMimaps(bool enable) { m_isUsingMipmaps = enable; }
 		bool IsUsingMimmaps() { return m_isUsingMipmaps; }
+		//====================================================================================================
 
-		void SetUsage(TextureUsage use) { m_usage = use; }
-		//=======================================================================================================
-
-		//= TEXTURE BITS =========================================================
-		void ClearTextureBits();
-		void GetTextureBits(std::vector<std::vector<unsigned char>>* textureBits);
-		//========================================================================
+		//= TEXTURE BITS ======================================================
+		void ClearTextureBytes();
+		void GetTextureBytes(std::vector<std::vector<std::byte>>* textureBytes);
+		//=====================================================================
 		
 		//= SHADER RESOURCE ============================
 		void** GetShaderResource();
@@ -117,7 +107,7 @@ namespace Directus
 			unsigned int width, 
 			unsigned int height, 
 			unsigned int channels, 
-			std::vector<unsigned char> rgba, 
+			const std::vector<std::byte>& rgba, 
 			TextureFormat format
 		);
 		// Creates a shader resource from memory
@@ -133,11 +123,10 @@ namespace Directus
 		bool LoadFromForeignFormat(const std::string& filePath);
 		TextureType TextureTypeFromString(const std::string& type);
 
-		TextureUsage m_usage = TextureUsage_Internal;
 		std::shared_ptr<D3D11Texture> m_textureAPI;
 		TextureFormat m_format = RGBA_8_UNORM;
 
-		//= DATA =============================================
+		//= DATA ==========================================
 		unsigned int m_bpp = 0;
 		unsigned int m_width = 0;
 		unsigned int m_height = 0;
@@ -145,8 +134,8 @@ namespace Directus
 		bool m_isGrayscale = false;
 		bool m_isTransparent = false;
 		bool m_isUsingMipmaps = false;
-		std::vector<std::vector<unsigned char>> m_textureBits;
+		std::vector<std::vector<std::byte>> m_textureBytes;
 		TextureType m_type = TextureType_Unknown;
-		//====================================================
+		//=================================================
 	};
 }

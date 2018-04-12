@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31,11 +31,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Import/FontImporter.h"
 #include "../Graphics/Model.h"
 #include "../Graphics/Material.h"
+#include "../Audio/AudioClip.h"
 //===============================
 
 namespace Directus
 {
-	class ENGINE_API ResourceManager : public Subsystem
+	class ENGINE_CLASS ResourceManager : public Subsystem
 	{
 	public:
 		ResourceManager(Context* context);
@@ -63,13 +64,16 @@ namespace Directus
 			std::string name				= FileSystem::GetFileNameNoExtensionFromFilePath(filePathRelative);
 
 			// Check if the resource is already loaded
-			if (m_resourceCache->IsCached(name, Resource::ToResourceType<T>()))
+			if (m_resourceCache->IsCached(name, IResource::DeduceResourceType<T>()))
 			{
 				return GetResourceByName<T>(name);
 			}
 
-			// Create new resource of the provided type
-			std::shared_ptr<T> typed = std::make_shared<T>(m_context);
+			// Create new resource
+			auto typed = std::make_shared<T>(m_context);
+			// Set a default name and a default filepath in case it's not overridden by LoadFromFile()
+			typed->SetResourceName(name);
+			typed->SetResourceFilePath(filePathRelative);
 
 			// Load
 			if (!typed->LoadFromFile(filePathRelative))
@@ -78,15 +82,13 @@ namespace Directus
 				return std::weak_ptr<T>();
 			}
 
-			typed->SetResourceFilePath(filePathRelative);
-			typed->SetResourceName(name);
-
+			// Cache it and cast it
 			return Add<T>(typed);
 		}
 
 		// Adds a resource into the cache and returns the derived resource as a weak reference
 		template <class T>
-		std::weak_ptr<T> Add(std::shared_ptr<Resource> resource)
+		std::weak_ptr<T> Add(std::shared_ptr<IResource> resource)
 		{
 			if (!resource)
 				return std::weak_ptr<T>();
@@ -102,7 +104,7 @@ namespace Directus
 		}
 
 		// Adds a resource into the cache (if it's not already cached)
-		void Add(std::shared_ptr<Resource> resource)
+		void Add(std::shared_ptr<IResource> resource)
 		{
 			if (!resource || m_resourceCache->IsCached(resource))
 				return;
@@ -111,7 +113,7 @@ namespace Directus
 			m_resourceCache->Add(resource);
 		}
 
-		// Returns cached resource by )
+		// Returns cached resource by name
 		template <class T>
 		std::weak_ptr<T> GetResourceByName(const std::string& name)
 		{
@@ -143,9 +145,9 @@ namespace Directus
 			return typedVec;
 		}
 
-		std::vector<std::weak_ptr<Resource>> GetResourcesByType(ResourceType type)
+		std::vector<std::weak_ptr<IResource>> GetResourcesByType(ResourceType type)
 		{
-			std::vector<std::weak_ptr<Resource>> vec;
+			std::vector<std::weak_ptr<IResource>> vec;
 			for (const auto& resource : m_resourceCache->GetByType(type))
 			{
 				vec.push_back(resource);
@@ -159,6 +161,11 @@ namespace Directus
 			return (unsigned int)m_resourceCache->GetByType(type).size();
 		}
 
+		auto GetResourceAll() 
+		{
+			return m_resourceCache->GetAll();
+		}
+
 		void SaveResourcesToFiles()
 		{
 			m_resourceCache->SaveResourcesToFiles();
@@ -170,13 +177,14 @@ namespace Directus
 		}
 
 		// Memory
-		unsigned int GetMemoryUsageKB(ResourceType type) { return m_resourceCache->GetMemoryUsageKB(type); }
+		unsigned int GetMemoryUsage(ResourceType type)	{ return m_resourceCache->GetMemoryUsage(type); }
+		unsigned int GetMemoryUsage()					{ return m_resourceCache->GetMemoryUsage(); }
 
 		// Directories
 		void AddStandardResourceDirectory(ResourceType type, const std::string& directory);
 		const std::string& GetStandardResourceDirectory(ResourceType type);
 		void SetProjectDirectory(const std::string& directory);
-		const std::string& GetProjectDirectoryAbsolute();
+		std::string GetProjectDirectoryAbsolute();
 		const std::string& GetProjectDirectory() { return m_projectDirectory; }	
 		std::string GetProjectStandardAssetsDirectory() { return m_projectDirectory + "Standard_Assets//"; }
 
@@ -197,18 +205,18 @@ namespace Directus
 
 		// Derived -> Base (as a shared pointer)
 		template <class Type>
-		static std::shared_ptr<Resource> ToBaseShared(std::shared_ptr<Type> derived)
+		static std::shared_ptr<IResource> ToBaseShared(std::shared_ptr<Type> derived)
 		{
-			std::shared_ptr<Resource> base = dynamic_pointer_cast<Resource>(derived);
+			std::shared_ptr<IResource> base = dynamic_pointer_cast<IResource>(derived);
 
 			return base;
 		}
 
 		// Base -> Derived (as a weak pointer)
 		template <class Type>
-		static std::weak_ptr<Type> ToDerivedWeak(std::shared_ptr<Resource> base)
+		static std::weak_ptr<Type> ToDerivedWeak(std::shared_ptr<IResource> base)
 		{
-			std::shared_ptr<Type> derivedShared = std::static_pointer_cast<Type>(base);
+			std::shared_ptr<Type> derivedShared = std::dynamic_pointer_cast<Type>(base);
 			std::weak_ptr<Type> derivedWeak = std::weak_ptr<Type>(derivedShared);
 
 			return derivedWeak;

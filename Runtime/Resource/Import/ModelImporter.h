@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,10 +22,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #pragma once
 #include <string>
 
-//= INCLUDES =================
-#include "../../Core/Helper.h"
+//= INCLUDES =====================
+#include "../../Core/EngineDefs.h"
 #include <memory>
-//============================
+//================================
 
 struct aiNode;
 struct aiScene;
@@ -42,48 +42,37 @@ namespace Directus
 	class Model;
 	class Transform;
 
-	class ENGINE_API ModelImporter
+	class ENGINE_CLASS ModelImporter
 	{
 	public:
 		ModelImporter(Context* context);
 		~ModelImporter();
 
-		void ReadAnimations(Model* model, const aiScene* scene);
 		bool Load(Model* model, const std::string& filePath);
-
-		const std::string& GetProgressStatus() { return m_progressStatus; }
-		float GetProgress() { return (float)m_jobsTotal / (float)m_jobsDone; }
-		bool IsLoading() { return m_isLoading; }
 
 	private:
 		// PROCESSING
 		void ReadNodeHierarchy(
 			Model* model, 
 			const aiScene* assimpScene, 
-			aiNode* assimpNode, 
-			const std::weak_ptr<GameObject> parentNode = std::weak_ptr<GameObject>(), 
+			aiNode* assimpNode,
+			std::weak_ptr<GameObject> parentNode = std::weak_ptr<GameObject>(), 
 			std::weak_ptr<GameObject> newNode = std::weak_ptr<GameObject>()
 		);
+		void ReadAnimations(Model* model, const aiScene* scene);
 		void LoadMesh(Model* model, aiMesh* assimpMesh, const aiScene* assimpScene, const std::weak_ptr<GameObject>& parentGameObject);
-		void LoadAiMeshVertices(aiMesh* assimpMesh, std::shared_ptr<Mesh> mesh);
-		void LoadAiMeshIndices(aiMesh* assimpMesh, std::shared_ptr<Mesh> mesh);
+		void LoadAiMeshVertices(aiMesh* assimpMesh, const std::shared_ptr<Mesh>& mesh);
+		void LoadAiMeshIndices(aiMesh* assimpMesh, const std::shared_ptr<Mesh>& mesh);
 		std::shared_ptr<Material> AiMaterialToMaterial(Model* model, aiMaterial* assimpMaterial);
 
 		// HELPER FUNCTIONS
 		std::string ValidateTexturePath(const std::string& texturePath);
 		std::string TryPathWithMultipleExtensions(const std::string& fullpath);
-		void CalculateNodeCount(aiNode* node, int& count);
-		void ClearProgressStatus();
+		void ComputeNodeCount(aiNode* node, int* count);
 	
 		Model* m_model;
 		std::string m_modelPath;
 
-		// Statistics	
-		std::string m_progressStatus;
-		int m_jobsDone;
-		int m_jobsTotal;
-		bool m_isLoading;
-		
 		Context* m_context;
 	};
 }

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -60,10 +60,10 @@ XPM files[reading, writing]
 
 #define FREEIMAGE_LIB
 
-//= INCLUDES =================
+//= INCLUDES =====================
 #include <vector>
-#include "../../Core/Helper.h"
-//============================
+#include "../../Core/EngineDefs.h"
+//================================
 
 struct FIBITMAP;
 
@@ -72,7 +72,7 @@ namespace Directus
 	class Context;
 	class Texture;
 
-	class ENGINE_API ImageImporter
+	class ENGINE_CLASS ImageImporter
 	{
 	public:
 		ImageImporter(Context* context);
@@ -80,14 +80,14 @@ namespace Directus
 
 		void LoadAsync(const std::string& filePath, Texture* texInfo);
 		bool Load(const std::string& filePath, Texture* texInfo);
-		bool RescaleBits(std::vector<unsigned char>* rgba, unsigned int fromWidth, unsigned int fromHeight, unsigned int toWidth, unsigned int toHeight);
+		bool RescaleBits(std::vector<std::byte>* rgba, unsigned int fromWidth, unsigned int fromHeight, unsigned int toWidth, unsigned int toHeight);
 
 	private:
 		unsigned int ComputeChannelCount(FIBITMAP* bitmap, unsigned int bpp);
-		bool GetBitsFromFIBITMAP(std::vector<unsigned char>* rgba, FIBITMAP* bitmap);
-		bool GetRescaledBitsFromBitmap(std::vector<unsigned char>* rgbaOut, int width, int height, FIBITMAP* bitmap);
+		bool GetBitsFromFIBITMAP(std::vector<std::byte>* rgba, FIBITMAP* bitmap);
+		bool GetRescaledBitsFromBitmap(std::vector<std::byte>* rgbaOut, int width, int height, FIBITMAP* bitmap);
 		void GenerateMipmapsFromFIBITMAP(FIBITMAP* bitmap, Texture* imageData);	
-		bool GrayscaleCheck(const std::vector<unsigned char>& dataRGBA, int width, int height);
+		bool GrayscaleCheck(const std::vector<std::byte>& dataRGBA, int width, int height);
 
 		Context* m_context;
 	};

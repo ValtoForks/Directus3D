@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -26,9 +26,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <memory>
 //===============
 
+struct ImGuiContext;
 class Widget;
-struct SDL_Window;
-union SDL_Event;
 namespace Directus {class Context;}
 
 class Editor
@@ -37,8 +36,8 @@ public:
 	Editor();
 	~Editor();
 
-	void Initialize(SDL_Window* window, Directus::Context* context);	
-	void HandleEvent(SDL_Event* event);
+	void Initialize(Directus::Context* context);
+	void Resize();
 	void Update();
 	void Shutdown();
 
@@ -47,4 +46,5 @@ private:
 	void ApplyStyle();
 
 	std::vector<std::unique_ptr<Widget>> m_widgets;
+	Directus::Context* m_context;
 };

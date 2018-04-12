@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,7 +23,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Rectangle.h"
 #include "D3D11/D3D11IndexBuffer.h"
 #include "D3D11/D3D11VertexBuffer.h"
-#include "../Core/Helper.h"
+#include "../Core/EngineDefs.h"
 #include "../Graphics/Vertex.h"
 #include "../Logging/Log.h"
 #include "../Core/Context.h"
@@ -118,7 +118,7 @@ namespace Directus
 		vertices.push_back(vertex);
 
 		// Load the index array with data.
-		for (int i = 0; i < vertices.size(); i++)
+		for (unsigned int i = 0; i < vertices.size(); i++)
 		{
 			indices.push_back(i);
 		}

@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -36,26 +36,26 @@ using namespace Directus::Math;
 
 namespace Directus
 {
-	Material::Material(Context* context)
+	Material::Material(Context* context) : IResource(context)
 	{
-		// Resource
-		RegisterResource(Resource_Material);
+		//= IResource ===============
+		RegisterResource<Material>();
+		//===========================
 
 		// Material
-		m_context = context;
-		m_modelID = NOT_ASSIGNED_HASH;
-		m_cullMode = CullBack;
-		m_opacity = 1.0f;
-		m_alphaBlending = false;
-		m_shadingMode = Shading_PBR;
-		m_colorAlbedo = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
-		m_roughnessMultiplier = 1.0f;
-		m_metallicMultiplier = 0.0f;
-		m_normalMultiplier = 0.0f;
-		m_heightMultiplier = 0.0f;
-		m_uvTiling = Vector2(1.0f, 1.0f);
-		m_uvOffset = Vector2(0.0f, 0.0f);
-		m_isEditable = true;
+		m_modelID				= NOT_ASSIGNED_HASH;
+		m_opacity				= 1.0f;
+		m_alphaBlending			= false;
+		m_cullMode				= CullBack;
+		m_shadingMode			= Shading_PBR;
+		m_colorAlbedo			= Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+		m_roughnessMultiplier	= 1.0f;
+		m_metallicMultiplier	= 0.0f;
+		m_normalMultiplier		= 0.0f;
+		m_heightMultiplier		= 0.0f;
+		m_uvTiling				= Vector2(1.0f, 1.0f);
+		m_uvOffset				= Vector2(0.0f, 0.0f);
+		m_isEditable			= true;
 
 		AcquireShader();
 	}
@@ -65,13 +65,13 @@ namespace Directus
 
 	}
 
-	//= RESOURCE INTERFACE =====================================
+	//= IResource ==============================================
 	bool Material::LoadFromFile(const string& filePath)
 	{
 		// Make sure the path is relative
 		SetResourceFilePath(FileSystem::GetRelativeFilePath(filePath));
 
-		unique_ptr<XmlDocument> xml = make_unique<XmlDocument>();
+		auto xml = make_unique<XmlDocument>();
 		if (!xml->Load(GetResourceFilePath()))
 			return false;
 
@@ -94,10 +94,10 @@ namespace Directus
 		int textureCount = xml->GetAttributeAsInt("Textures", "Count");
 		for (int i = 0; i < textureCount; i++)
 		{
-			string nodeName		= "Texture_" + to_string(i);
-			TextureType texType = (TextureType)xml->GetAttributeAsInt(nodeName, "Texture_Type");
-			string texName		= xml->GetAttributeAsStr(nodeName, "Texture_Name");
-			string texPath		= xml->GetAttributeAsStr(nodeName, "Texture_Path");
+			string nodeName	= "Texture_" + to_string(i);
+			auto texType	= (TextureType)xml->GetAttributeAsInt(nodeName, "Texture_Type");
+			string texName	= xml->GetAttributeAsStr(nodeName, "Texture_Name");
+			string texPath	= xml->GetAttributeAsStr(nodeName, "Texture_Path");
 
 			// If the texture happens to be loaded, get a reference to it
 			auto texture = m_context->GetSubsystem<ResourceManager>()->GetResourceByName<Texture>(texName);
@@ -129,14 +129,14 @@ namespace Directus
 			SetResourceFilePath(GetResourceFilePath() + MATERIAL_EXTENSION);
 		}
 
-		unique_ptr<XmlDocument> xml = make_unique<XmlDocument>();
+		auto xml = make_unique<XmlDocument>();
 		xml->AddNode("Material");
 		xml->AddAttribute("Material", "Name", GetResourceName());
 		xml->AddAttribute("Material", "Path", GetResourceFilePath());
 		xml->AddAttribute("Material", "Model_ID", m_modelID);
-		xml->AddAttribute("Material", "Cull_Mode", int(m_cullMode));
 		xml->AddAttribute("Material", "Opacity", m_opacity);
 		xml->AddAttribute("Material", "Alpha_Blending", m_alphaBlending);
+		xml->AddAttribute("Material", "Cull_Mode", int(m_cullMode));	
 		xml->AddAttribute("Material", "Shading_Mode", int(m_shadingMode));
 		xml->AddAttribute("Material", "Color", m_colorAlbedo);
 		xml->AddAttribute("Material", "Roughness_Multiplier", m_roughnessMultiplier);
@@ -160,54 +160,59 @@ namespace Directus
 			i++;
 		}
 
-		if (!xml->Save(GetResourceFilePath()))
-			return false;
+		return xml->Save(GetResourceFilePath());
+	}
 
-		// If this material is using a shader, save it
-		if (!m_shader.expired())
-		{
-			m_shader.lock()->SetResourceFilePath(FileSystem::GetFilePathWithoutExtension(filePath) + SHADER_EXTENSION);
-			m_shader.lock()->SaveToFile(m_shader.lock()->GetResourceFilePath());
-		}
+	unsigned int Material::GetMemory()
+	{
+		// Doesn't have to be spot on, just representative
+		unsigned int size = 0;
+		size += sizeof(bool) * 2;
+		size += sizeof(int) * 3;
+		size += sizeof(float) * 5;
+		size += sizeof(Vector2) * 2;
+		size += sizeof(Vector4);
+		size += (unsigned int)(sizeof(std::map<TextureType, TexInfo>) + (sizeof(TextureType) + sizeof(TexInfo)) * m_textures.size());
 
-		return true;
+		return size;
 	}
 
 	//==========================================================
 
 	//= TEXTURES ===================================================================
 	// Set texture from an existing texture
-	void Material::SetTexture(weak_ptr<Texture> texture)
+	void Material::SetTexture(const weak_ptr<Texture>& textureWeak, bool autoCache /* true */)
 	{
 		// Make sure this texture exists
-		if (texture.expired())
+		auto texture = textureWeak.lock();
+		if (!texture)
 		{
-			LOG_WARNING("Material: Can't set uninitialized material texture.");
+			LOG_WARNING("Material::SetTexture(): Provided texture is null, can't execute function");
 			return;
 		}
 
-		TextureType texType = texture.lock()->GetType();
-		string texName		= texture.lock()->GetResourceName();
-		string texPath		= texture.lock()->GetResourceFilePath();
+		// Cache it or use the provided reference as is
+		auto texRef = autoCache ? textureWeak.lock()->Cache<Texture>() : textureWeak;
+
+		TextureType texType = texture->GetType();
+		string texName		= texture->GetResourceName();
+		string texPath		= texture->GetResourceFilePath();
 
 		// Check if a texture of that type already exists and replace it
 		auto it = m_textures.find(texType);
 		if (it != m_textures.end())
 		{
-			it->second.texture	= texture;
+			it->second.texture	= texRef;
 			it->second.name		= texName;
 			it->second.path		= texPath;
 		}
 		else
 		{
 			// If that's a new texture type, simply add it
-			m_textures.insert(make_pair(texType, TexInfo(texture, texName, texPath)));
+			m_textures.insert(make_pair(texType, TexInfo(texRef, texName, texPath)));
 		}
 
-		// Adjust texture multipliers
 		TextureBasedMultiplierAdjustment();
-
-		// Acquire and appropriate shader
 		AcquireShader();
 	}
 
@@ -279,23 +284,26 @@ namespace Directus
 	void Material::AcquireShader()
 	{
 		if (!m_context)
+		{
+			LOG_ERROR("Material::AcquireShader(): Context is null, can't execute function");
 			return;
+		}
 
 		// Add a shader to the pool based on this material, if a 
 		// matching shader already exists, it will be returned.
 		unsigned long shaderFlags = 0;
 
-		if (HasTextureOfType(TextureType_Albedo)) shaderFlags |= Variaton_Albedo;
-		if (HasTextureOfType(TextureType_Roughness)) shaderFlags |= Variaton_Roughness;
-		if (HasTextureOfType(TextureType_Metallic)) shaderFlags |= Variaton_Metallic;
-		if (HasTextureOfType(TextureType_Normal)) shaderFlags |= Variaton_Normal;
-		if (HasTextureOfType(TextureType_Height)) shaderFlags |= Variaton_Height;
-		if (HasTextureOfType(TextureType_Occlusion)) shaderFlags |= Variaton_Occlusion;
-		if (HasTextureOfType(TextureType_Emission)) shaderFlags |= Variaton_Emission;
-		if (HasTextureOfType(TextureType_Mask)) shaderFlags |= Variaton_Mask;
-		if (HasTextureOfType(TextureType_CubeMap)) shaderFlags |= Variaton_Cubemap;
+		if (HasTextureOfType(TextureType_Albedo)) shaderFlags		|= Variaton_Albedo;
+		if (HasTextureOfType(TextureType_Roughness)) shaderFlags	|= Variaton_Roughness;
+		if (HasTextureOfType(TextureType_Metallic)) shaderFlags		|= Variaton_Metallic;
+		if (HasTextureOfType(TextureType_Normal)) shaderFlags		|= Variaton_Normal;
+		if (HasTextureOfType(TextureType_Height)) shaderFlags		|= Variaton_Height;
+		if (HasTextureOfType(TextureType_Occlusion)) shaderFlags	|= Variaton_Occlusion;
+		if (HasTextureOfType(TextureType_Emission)) shaderFlags		|= Variaton_Emission;
+		if (HasTextureOfType(TextureType_Mask)) shaderFlags			|= Variaton_Mask;
+		if (HasTextureOfType(TextureType_CubeMap)) shaderFlags		|= Variaton_Cubemap;
 
-		m_shader = CreateShaderBasedOnMaterial(shaderFlags);
+		m_shader = GetOrCreateShader(shaderFlags);
 	}
 
 	weak_ptr<ShaderVariation> Material::FindMatchingShader(unsigned long shaderFlags)
@@ -309,32 +317,26 @@ namespace Directus
 		return weak_ptr<ShaderVariation>();
 	}
 
-	weak_ptr<ShaderVariation> Material::CreateShaderBasedOnMaterial(unsigned long shaderFlags)
+	weak_ptr<ShaderVariation> Material::GetOrCreateShader(unsigned long shaderFlags)
 	{
+		if (!m_context)
+		{
+			LOG_ERROR("Material::GetOrCreateShader(): Context is null, can't execute function");
+			return weak_ptr<ShaderVariation>();
+		}
+
 		// If an appropriate shader already exists, return it's ID
 		auto existingShader = FindMatchingShader(shaderFlags);
-
 		if (!existingShader.expired())
 			return existingShader;
 
-		// If not, create a new one 
-		auto resourceMng = m_context->GetSubsystem<ResourceManager>();
-		string shaderDirectory = resourceMng->GetStandardResourceDirectory(Resource_Shader); // Get standard shader directory
-
 		// Create and initialize shader
-		auto shader = make_shared<ShaderVariation>();
-		shader->SetResourceFilePath(shaderDirectory + "GBuffer.hlsl");
-		shader->Initialize(m_context, shaderFlags);
-
-		// A GBuffer shader can exist multiple times in memory because it can have multiple variations.
-		// In order to avoid conflicts where the engine thinks it's the same shader, we randomize the
-		// path which will automatically create a resource ID based on that path. Hence we make sure that
-		// there are no conflicts. A more elegant way to handle this would be nice...
-		shader->SetResourceFilePath(FileSystem::GetFilePathWithoutExtension(GetResourceFilePath()) + "_" + GUIDGenerator::GenerateAsStr() + SHADER_EXTENSION);
-		shader->SetResourceName("GBuffer_" + to_string(shader->GetResourceID()) + ".hlsl");
+		auto shader = make_shared<ShaderVariation>(m_context);
+		shader->Compile(m_context->GetSubsystem<ResourceManager>()->GetStandardResourceDirectory(Resource_Shader) + "GBuffer.hlsl", shaderFlags);
+		shader->SetResourceName("ShaderVariation_" + to_string(shader->GetResourceID())); // set a different name for it's shader the cache doesn't thing they are the same
 
 		// Add the shader to the pool and return it
-		return m_context->GetSubsystem<ResourceManager>()->Add<ShaderVariation>(shader);
+		return shader->Cache<ShaderVariation>();
 	}
 
 	void** Material::GetShaderResource(TextureType type)
@@ -348,8 +350,28 @@ namespace Directus
 
 		return nullptr;
 	}
-	//==============================================================================
 
+	void Material::SetMultiplier(TextureType type, float value)
+	{
+		if (type == TextureType_Roughness)
+		{
+			m_roughnessMultiplier = value;
+		}
+		else if (type == TextureType_Metallic)
+		{
+			m_metallicMultiplier = value;
+		}
+		else if (type == TextureType_Normal)
+		{
+			m_normalMultiplier = value;
+		}
+		else if (type == TextureType_Height)
+		{
+			m_heightMultiplier = value;
+		}
+	}
+
+	//==============================================================================
 	void Material::TextureBasedMultiplierAdjustment()
 	{
 		if (HasTextureOfType(TextureType_Roughness))

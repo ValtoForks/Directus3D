@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,12 +21,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==============
-#include "../Core/Helper.h"
+//= INCLUDES ==================
+#include "../Core/EngineDefs.h"
 #include <string>
 #include <memory>
-#include <iomanip>
-//=========================
+#include <mutex>
+//=============================
 
 namespace Directus
 {
@@ -44,7 +44,7 @@ namespace Directus
 		class Vector4;
 	}
 
-	class ENGINE_API Log
+	class ENGINE_CLASS Log
 	{
 		friend class ILogger;
 	public:
@@ -57,7 +57,7 @@ namespace Directus
 
 		static void Initialize();
 		static void Release();
-		static void SetLogger(std::weak_ptr<ILogger> logger);
+		static void SetLogger(const std::weak_ptr<ILogger>& logger);
 
 		// STRING
 		static void Write(const std::string& text, LogType type);
@@ -66,7 +66,7 @@ namespace Directus
 		static void Write(const char* text, LogType type);
 
 		// GAMEOBJECT
-		static void Write(std::weak_ptr<GameObject> gameObject, LogType type);
+		static void Write(const std::weak_ptr<GameObject>& gameObject, LogType type);
 
 		// VECTORS
 		static void Write(const Math::Vector2& vector, LogType type);
@@ -110,5 +110,6 @@ namespace Directus
 		static std::ofstream m_fout;
 		static std::string m_logFileName;
 		static bool m_firstLog;
+		static std::mutex m_mutex;
 	};
 }

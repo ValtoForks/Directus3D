@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,61 +21,79 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ==============
-#include <map>
+//= INCLUDES =================
 #include <memory>
 #include "Core/Stopwatch.h"
-#include "IconProvider.h"
+#include "ThumbnailProvider.h"
 #include "EditorHelper.h"
-//=========================
+//============================
 
-enum FileDialog_Style
+enum FileDialog_Mode
 {
-	FileDialog_Style_Basic,
-	FileDialog_Style_Open,
-	FileDialog_Style_Load,
-	FileDialog_Style_Save
+	FileDialog_Basic,
+	FileDialog_Open,
+	FileDialog_Load,
+	FileDialog_Save
 };
 
 enum FileDialog_Filter
 {
-	FileDialog_Filter_All,
-	FileDialog_Filter_Scene,
-	FileDialog_Filter_Model
+	FileDialog_All,
+	FileDialog_Scene,
+	FileDialog_Model
 };
 
 class FileDialog
 {
 public:
-	FileDialog(Directus::Context* context, bool standaloneWindow = true, FileDialog_Filter filter = FileDialog_Filter_All, FileDialog_Style type = FileDialog_Style_Basic);
+	FileDialog(Directus::Context* context, bool standaloneWindow = true, FileDialog_Filter filter = FileDialog_All, FileDialog_Mode type = FileDialog_Basic);
 
 	// Filter
 	FileDialog_Filter GetFilter() { return m_filter; }
 	void SetFilter(FileDialog_Filter filter);
 
 	// Style
-	FileDialog_Style GetStyle() { return m_style; }
-	void SetStyle(FileDialog_Style type);
-	
-	// Show
-	bool Show(bool* isVisible, std::string* path);
+	FileDialog_Mode GetStyle() { return m_style; }
+	void SetStyle(FileDialog_Mode type);
 
-private:	
-	void ViewPath(const std::string& pathClicked);
+	// Shows the dialog and returns true if a a selection was made
+	bool Show(bool* isVisible, std::string* pathDoubleClicked = nullptr);
+
+	void SetCallback_OnPathClicked(const std::function<void(const std::string&)>& callback)			{ m_callback_OnPathClicked = callback; }
+	void SetCallback_OnPathDoubleClicked(const std::function<void(const std::string&)>& callback)	{ m_callback_OnPathDoubleClicked = callback; }
+
+private:
+	void Dialog_Top(bool* isVisible);
+	void Dialog_Middle();
+	void Dialog_Bottom(bool* isVisible);
 	bool NavigateToDirectory(const std::string& pathClicked);
+	void AddThumbnail(const std::string& filePath, Thumbnail_Type type = Thumbnail_Custom);
+	void HandleDrag(const std::pair<const std::basic_string<char>, Thumbnail>& entry);
+	void HandleClicking(const char* directoryEntry);
+	void ContextMenu();
 
 	std::string m_title;
-	std::string m_currentDirectory;
-	std::string m_pathClicked;
-	FileDialog_Style m_style;
+
+	// Display name, data
+	std::map<std::string, Thumbnail> m_directoryEntries;
+	std::string m_currentPath;
+	std::string m_currentFullPath;
+
+	FileDialog_Mode m_style;
 	FileDialog_Filter m_filter;
+
+	char m_selectedFileName[BUFFER_TEXT_DEFAULT]{};
+	char m_itemLabel[BUFFER_TEXT_DEFAULT]{};
+
 	bool m_isWindow;
 	float m_itemSize;
-	bool m_selectionMade = false;
-	bool m_navigateToPath;
-	std::map<std::string, IconProvider_Icon> m_directoryContents;
+	bool m_selectionMade;
+	bool m_isDirty;
+	bool m_wasVisible;
 	std::unique_ptr<Directus::Stopwatch> m_stopwatch;
-	char m_fileNameText[BUFFER_TEXT_DEFAULT]{};
-	char m_itemLabel[BUFFER_TEXT_DEFAULT]{};
 	Directus::Context* m_context;
+
+	// Callbacks
+	std::function<void(const std::string&)> m_callback_OnPathClicked;
+	std::function<void(const std::string&)> m_callback_OnPathDoubleClicked;
 };

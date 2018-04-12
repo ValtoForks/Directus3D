@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,24 +24,26 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES ==============
 #include <vector>
 #include <memory>
-#include "Resource.h"
+#include "IResource.h"
 #include "../Logging/Log.h"
+#include <mutex>
 //========================
 
 namespace Directus
 {
-	class ENGINE_API ResourceCache
+	class ENGINE_CLASS ResourceCache
 	{
 	public:
 		ResourceCache() {}
 		~ResourceCache() { Clear(); }
 
 		// Adds a resource
-		void Add(std::shared_ptr<Resource> resource)
+		void Add(const std::shared_ptr<IResource>& resource)
 		{
 			if (!resource)
 				return;
 
+			std::lock_guard<std::mutex> guard(m_mutex);
 			m_resourceGroups[resource->GetResourceType()].push_back(resource);
 		}
 
@@ -64,15 +66,18 @@ namespace Directus
 			{
 				for (const auto& resource : resourceGroup.second)
 				{
+					if (!resource->HasFilePath())
+						continue;
+
 					resource->SaveToFile(resource->GetResourceFilePath());
 				}
 			}
 		}
 
 		// Returns all the resources
-		std::vector<std::shared_ptr<Resource>> GetAll()
+		std::vector<std::shared_ptr<IResource>> GetAll()
 		{
-			std::vector<std::shared_ptr<Resource>> resources;
+			std::vector<std::shared_ptr<IResource>> resources;
 			for (const auto& resourceGroup : m_resourceGroups)
 			{
 				resources.insert(resources.end(), resourceGroup.second.begin(), resourceGroup.second.end());
@@ -83,32 +88,32 @@ namespace Directus
 
 		// Returns a resource by name
 		template <class T>
-		std::shared_ptr<Resource> GetByName(const std::string& name)
+		std::shared_ptr<IResource> GetByName(const std::string& name)
 		{
-			for (const auto& resource : m_resourceGroups[Resource::ToResourceType<T>()])
+			for (const auto& resource : m_resourceGroups[IResource::DeduceResourceType<T>()])
 			{
 				if (name == resource->GetResourceName())
 					return resource;
 			}
 
-			return std::shared_ptr<Resource>();
+			return std::shared_ptr<IResource>();
 		}
 
 		// Returns a resource by path
 		template <class T>
-		std::shared_ptr<Resource> GetByPath(const std::string& path)
+		std::shared_ptr<IResource> GetByPath(const std::string& path)
 		{
-			for (const auto& resource : m_resourceGroups[Resource::ToResourceType<T>()])
+			for (const auto& resource : m_resourceGroups[IResource::DeduceResourceType<T>()])
 			{
 				if (path == resource->GetResourceFilePath())
 					return resource;
 			}
 
-			return std::shared_ptr<Resource>();
+			return std::shared_ptr<IResource>();
 		}
 
 		// Checks whether a resource is already cached
-		bool IsCached(std::shared_ptr<Resource> resourceIn)
+		bool IsCached(const std::shared_ptr<IResource>& resourceIn)
 		{
 			return IsCached(resourceIn->GetResourceName(), resourceIn->GetResourceType());
 		}
@@ -131,24 +136,42 @@ namespace Directus
 			return false;
 		}
 
-		unsigned int GetMemoryUsageKB(ResourceType type)
+		unsigned int GetMemoryUsage()
 		{
-			unsigned int sizeKB = 0;
-			for (const auto& resource : m_resourceGroups[type])
+			unsigned int size = 0;
+			for (const auto& group : m_resourceGroups)
 			{
-				sizeKB += resource->GetMemoryUsageKB();
+				for (const auto& resource : group.second)
+				{
+					if (!resource)
+						continue;
+
+					size += resource->GetMemory();
+				}
 			}
 
-			return sizeKB;
+			return size;
+		}
+
+		unsigned int GetMemoryUsage(ResourceType type)
+		{
+			unsigned int size = 0;
+			for (const auto& resource : m_resourceGroups[type])
+			{
+				size += resource->GetMemory();
+			}
+
+			return size;
 		}
 
 		// Returns all resources of a given type
-		const std::vector<std::shared_ptr<Resource>>& GetByType(ResourceType type) { return m_resourceGroups[type]; }
+		const std::vector<std::shared_ptr<IResource>>& GetByType(ResourceType type) { return m_resourceGroups[type]; }
 
 		// Unloads all resources
 		void Clear() { m_resourceGroups.clear(); }
 
 	private:
-		std::map<ResourceType, std::vector<std::shared_ptr<Resource>>> m_resourceGroups;
+		std::map<ResourceType, std::vector<std::shared_ptr<IResource>>> m_resourceGroups;
+		std::mutex m_mutex;
 	};
 }

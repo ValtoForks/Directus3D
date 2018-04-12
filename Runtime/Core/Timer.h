@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,13 +28,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 namespace Directus
 {
-	class ENGINE_API Timer : public Subsystem
+	class ENGINE_CLASS Timer : public Subsystem
 	{
 	public:
 		Timer(Context* context);
 		~Timer();
 
-		void Update();
+		void Tick();
 		float GetDeltaTimeMs() { return m_deltaTimeMs; }
 		float GetDeltaTimeSec() { return m_deltaTimeSec; }
 

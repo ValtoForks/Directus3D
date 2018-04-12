@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,11 +21,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES =================
-#include "../../Core/Helper.h"
+//= INCLUDES =====================
+#include "../../Core/EngineDefs.h"
 #include <vector>
 #include <map>
-//============================
+//================================
 
 struct FT_FaceRec_;
 
@@ -49,14 +49,14 @@ namespace Directus
 		int horizontalOffset;
 	};
 
-	class ENGINE_API FontImporter
+	class ENGINE_CLASS FontImporter
 	{
 	public:
 		FontImporter(Context* context);
 		~FontImporter();
 
 		void Initialize();
-		bool LoadFont(const std::string& filePath, int fontSize, std::vector<unsigned char>& atlasBuffer, unsigned int& atlasWidth, unsigned int& atlasHeight, std::map<unsigned int, Glyph>& characterInfo);
+		bool LoadFont(const std::string& filePath, int fontSize, std::vector<std::byte>& atlasBuffer, unsigned int& atlasWidth, unsigned int& atlasHeight, std::map<unsigned int, Glyph>& characterInfo);
 
 	private:
 		void ComputeAtlasTextureDimensions(FT_FaceRec_* face, unsigned int& atlasWidth, unsigned int& atlasHeight, unsigned int& rowHeight);

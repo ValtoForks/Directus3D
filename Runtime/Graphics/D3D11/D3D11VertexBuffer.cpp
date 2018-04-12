@@ -1,5 +1,5 @@
 /*
-Copyright(c) 2016-2017 Panos Karabelas
+Copyright(c) 2016-2018 Panos Karabelas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -36,6 +36,7 @@ namespace Directus
 		m_graphics = graphicsDevice;
 		m_buffer = nullptr;
 		m_stride = 0;
+		m_memoryUsage = 0;
 	}
 
 	D3D11VertexBuffer::~D3D11VertexBuffer()
@@ -68,6 +69,9 @@ namespace Directus
 		initData.SysMemPitch = 0;
 		initData.SysMemSlicePitch = 0;
 
+		// Compute memory usage
+		m_memoryUsage = (unsigned int)(sizeof(VertexPosCol) * vertices.size());
+
 		HRESULT result = m_graphics->GetDevice()->CreateBuffer(&bufferDesc, &initData, &m_buffer);
 		if (FAILED(result))
 		{
@@ -84,7 +88,7 @@ namespace Directus
 			return false;
 
 		m_stride = sizeof(VertexPosTex);
-		unsigned int size = (unsigned int)vertices.size();
+		auto size = (unsigned int)vertices.size();
 		unsigned int byteWidth = m_stride * size;
 
 		// fill in a buffer description.
@@ -102,6 +106,9 @@ namespace Directus
 		initData.pSysMem = vertices.data();
 		initData.SysMemPitch = 0;
 		initData.SysMemSlicePitch = 0;
+
+		// Compute memory usage
+		m_memoryUsage = (unsigned int)(sizeof(VertexPosTex) * vertices.size());
 
 		HRESULT result = m_graphics->GetDevice()->CreateBuffer(&bufferDesc, &initData, &m_buffer);
 		if (FAILED(result))
@@ -137,6 +144,9 @@ namespace Directus
 		initData.pSysMem = vertices.data();
 		initData.SysMemPitch = 0;
 		initData.SysMemSlicePitch = 0;
+
+		// Compute memory usage
+		m_memoryUsage = (unsigned int)(sizeof(VertexPosTexTBN) * vertices.size());
 
 		HRESULT result = m_graphics->GetDevice()->CreateBuffer(&bufferDesc, &initData, &m_buffer);
 		if (FAILED(result))
