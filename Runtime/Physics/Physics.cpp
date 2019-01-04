@@ -21,34 +21,30 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES ===================================================================
 #include "Physics.h"
-#include "../Core/Context.h"
 #include "../Core/Engine.h"
-#include "../Core/EngineDefs.h"
-#include "../Logging/Log.h"
 #include "../Core/EventSystem.h"
-#include "PhysicsDebugDraw.h"
-#include "BulletPhysicsHelper.h"
 #include "../Core/Settings.h"
 #include "../Profiling/Profiler.h"
+#include "PhysicsDebugDraw.h"
+#include "BulletPhysicsHelper.h"
+#include "../Rendering/Renderer.h"
 #pragma warning(push, 0) // Hide warnings which belong to Bullet
-#include "BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
-#include "BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h"
-#include "BulletCollision/CollisionDispatch/btCollisionDispatcher.h"
-#include "BulletDynamics/ConstraintSolver/btTypedConstraint.h"
-#include "BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h"
-#include "BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
+#include <BulletCollision/BroadphaseCollision/btDbvtBroadphase.h>
+#include <BulletCollision/CollisionDispatch/btDefaultCollisionConfiguration.h>
+#include <BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolver.h>
+#include <BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h>
+#include <BulletDynamics/ConstraintSolver/btConstraintSolver.h>
 #pragma warning(pop)
 //==============================================================================
-
 
 //= NAMESPACES ================
 using namespace std;
 using namespace Directus::Math;
 //=============================
 
-static const int MAX_SOLVER_ITERATIONS = 256;
-static const float INTERNAL_FPS = 60.0f;
-static const Vector3 GRAVITY = Vector3(0.0f, -9.81f, 0.0f);
+static const int MAX_SOLVER_ITERATIONS	= 256;
+static const float INTERNAL_FPS			= 60.0f;
+static const Vector3 GRAVITY			= Vector3(0.0f, -9.81f, 0.0f);
 
 namespace Directus
 { 
@@ -56,47 +52,42 @@ namespace Directus
 	{
 		m_maxSubSteps = 1;
 		m_simulating = false;
+		m_renderer = context->GetSubsystem<Renderer>();
 
 		// Subscribe to events
-		SUBSCRIBE_TO_EVENT(EVENT_UPDATE,			EVENT_HANDLER_VARIANT(Step));
-		SUBSCRIBE_TO_EVENT(EVENT_SCENE_CLEARED,		EVENT_HANDLER(Clear));
+		SUBSCRIBE_TO_EVENT(EVENT_TICK, EVENT_HANDLER_VARIANT(Step));
 	}
 
 	Physics::~Physics()
 	{
-		SafeRelease(m_debugDraw);
+		SafeDelete(m_world);
+		SafeDelete(m_constraintSolver);
+		SafeDelete(m_dispatcher);
+		SafeDelete(m_collisionConfiguration);
+		SafeDelete(m_broadphase);
+		SafeDelete(m_debugDraw);
 	}
 
 	bool Physics::Initialize()
 	{
-		m_broadphase				= make_unique<btDbvtBroadphase>();
-		m_collisionConfiguration	= make_unique<btDefaultCollisionConfiguration>();
-		m_dispatcher				= make_unique<btCollisionDispatcher>(m_collisionConfiguration.get());
-		m_constraintSolver			= make_unique<btSequentialImpulseConstraintSolver>();
-		m_world						= make_shared<btDiscreteDynamicsWorld>(
-									m_dispatcher.get(), 
-									m_broadphase.get(), 
-									m_constraintSolver.get(), 
-									m_collisionConfiguration.get()
-									);
-
-		// create an implementation of the btIDebugDraw interface
-		m_debugDraw = make_shared<PhysicsDebugDraw>();
-		int debugMode = btIDebugDraw::DBG_MAX_DEBUG_DRAW_MODE;
-		m_debugDraw->setDebugMode(debugMode);
+		m_broadphase				= new btDbvtBroadphase();
+		m_collisionConfiguration	= new btDefaultCollisionConfiguration();
+		m_dispatcher				= new btCollisionDispatcher(m_collisionConfiguration);
+		m_constraintSolver			= new btSequentialImpulseConstraintSolver();
+		m_debugDraw					= new PhysicsDebugDraw(m_context->GetSubsystem<Renderer>());
+		m_world						= new btDiscreteDynamicsWorld(m_dispatcher, m_broadphase, m_constraintSolver, m_collisionConfiguration);
 
 		// Setup world
 		m_world->setGravity(ToBtVector3(GRAVITY));
-		m_world->getDispatchInfo().m_useContinuous = true;
-		m_world->getSolverInfo().m_splitImpulse = false;
-		m_world->getSolverInfo().m_numIterations = MAX_SOLVER_ITERATIONS;
-		m_world->setDebugDrawer(m_debugDraw.get());
+		m_world->getDispatchInfo().m_useContinuous	= true;
+		m_world->getSolverInfo().m_splitImpulse		= false;
+		m_world->getSolverInfo().m_numIterations	= MAX_SOLVER_ITERATIONS;
+		m_world->setDebugDrawer(m_debugDraw);
 
-		// Log version
+		// Get version
 		string major = to_string(btGetVersion() / 100);
 		string minor = to_string(btGetVersion()).erase(0, 1);
-		Settings::Get().g_versionBullet = major + "." + minor;
-		LOG_INFO("Physics: Bullet " + Settings::Get().g_versionBullet);
+		Settings::Get().m_versionBullet = major + "." + minor;
 
 		return true;
 	}
@@ -106,17 +97,19 @@ namespace Directus
 		if (!m_world)
 			return;
 		
-		// Don't simulate physics if they are turned off
-		if (!Engine::EngineMode_IsSet(Engine_Physics))
+		// Debug draw
+		if (m_renderer->Flags_IsSet(Render_Gizmo_Physics))
+		{
+			m_world->debugDrawWorld();
+		}
+
+		// Don't simulate physics if they are turned off or the we are in editor mode
+		if (!Engine::EngineMode_IsSet(Engine_Physics) || !Engine::EngineMode_IsSet(Engine_Game))
 			return;
 
-		// Don't simulate physics if they engine is not in game mode
-		if (!Engine::EngineMode_IsSet(Engine_Game))
-			return;
+		TIME_BLOCK_START_CPU();
 
-		PROFILE_FUNCTION_BEGIN();
-
-		float timeStep = VARIANT_GET_FROM(float, deltaTime);
+		float timeStep = deltaTime.Get<float>();
 
 		// This equation must be met: timeStep < maxSubSteps * fixedTimeStep
 		float internalTimeStep = 1.0f / INTERNAL_FPS;
@@ -138,40 +131,7 @@ namespace Directus
 
 		m_simulating = false;
 
-		PROFILE_FUNCTION_END();
-	}
-
-	void Physics::Clear()
-	{
-		if (!m_world)
-			return;
-
-		// delete constraints
-		for (int i = m_world->getNumConstraints() - 1; i >= 0; i--)
-		{
-			auto constraint = m_world->getConstraint(i);
-			m_world->removeConstraint(constraint);
-			delete constraint;
-		}
-
-		// remove the rigidbodies from the dynamics world and delete them
-		for (int i = m_world->getNumCollisionObjects() - 1; i >= 0; i--)
-		{
-			auto obj = m_world->getCollisionObjectArray()[i];
-			auto body = btRigidBody::upcast(obj);
-			if (body && body->getMotionState())
-			{
-				delete body->getMotionState();
-			}
-			m_world->removeCollisionObject(obj);
-			delete obj;
-		}
-	}
-
-	void Physics::DebugDraw()
-	{
-		m_debugDraw->Clear();
-		m_world->debugDrawWorld();
+		TIME_BLOCK_END_CPU();
 	}
 
 	Vector3 Physics::GetGravity()

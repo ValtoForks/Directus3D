@@ -21,40 +21,81 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES =================
+//= INCLUDES =====================
 #include <memory>
-#include "Core/Stopwatch.h"
-#include "ThumbnailProvider.h"
+#include "IconProvider.h"
 #include "EditorHelper.h"
-//============================
+#include "FileSystem/FileSystem.h"
+//================================
 
-enum FileDialog_Mode
+enum FileDialog_Type
 {
-	FileDialog_Basic,
-	FileDialog_Open,
-	FileDialog_Load,
-	FileDialog_Save
+	FileDialog_Type_Browser,
+	FileDialog_Type_FileSelection
+};
+
+enum FileDialog_Operation
+{
+	FileDialog_Op_Open,
+	FileDialog_Op_Load,
+	FileDialog_Op_Save
 };
 
 enum FileDialog_Filter
 {
-	FileDialog_All,
-	FileDialog_Scene,
-	FileDialog_Model
+	FileDialog_Filter_All,
+	FileDialog_Filter_Scene,
+	FileDialog_Filter_Model
+};
+
+class FileDialog_Item
+{
+public:
+	FileDialog_Item(const std::string& path, const Thumbnail& thumbnail)
+	{
+		m_path			= path;
+		m_thumbnail		= thumbnail;
+		m_id			= GENERATE_GUID;
+		m_isDirectory	= Directus::FileSystem::IsDirectory(path);
+		m_label			= Directus::FileSystem::GetFileNameFromFilePath(path);
+	}
+
+	const std::string& GetPath() const	{ return m_path; }
+	const std::string& GetLabel() const	{ return m_label; }
+	unsigned int GetID() const			{ return m_id; }
+	void* GetShaderResource() const		{ return SHADER_RESOURCE_BY_THUMBNAIL(m_thumbnail); }
+	bool IsDirectory()					{ return m_isDirectory; }
+	float GetTimeSinceLastClickMs()		{ return (float)m_timeSinceLastClick.count(); }
+
+	void Clicked()	
+	{ 
+		auto now				= std::chrono::high_resolution_clock::now();
+		m_timeSinceLastClick	= now - m_lastClickTime;
+		m_lastClickTime			= now;
+	}
+	
+private:
+	Thumbnail m_thumbnail;
+	unsigned int m_id;
+	std::string m_path;
+	std::string m_label;
+	bool m_isDirectory;
+	std::chrono::duration<double, std::milli> m_timeSinceLastClick;
+	std::chrono::time_point<std::chrono::high_resolution_clock> m_lastClickTime;
 };
 
 class FileDialog
 {
 public:
-	FileDialog(Directus::Context* context, bool standaloneWindow = true, FileDialog_Filter filter = FileDialog_All, FileDialog_Mode type = FileDialog_Basic);
+	FileDialog(Directus::Context* context, bool standaloneWindow, FileDialog_Type type, FileDialog_Operation operation, FileDialog_Filter filter);
 
-	// Filter
-	FileDialog_Filter GetFilter() { return m_filter; }
-	void SetFilter(FileDialog_Filter filter);
+	// Type & Filter
+	FileDialog_Type GetType()		{ return m_type; }
+	FileDialog_Filter GetFilter()	{ return m_filter; }
 
-	// Style
-	FileDialog_Mode GetStyle() { return m_style; }
-	void SetStyle(FileDialog_Mode type);
+	// Operation
+	FileDialog_Operation GetOperation() { return m_operation; }
+	void SetOperation(FileDialog_Operation operation);
 
 	// Shows the dialog and returns true if a a selection was made
 	bool Show(bool* isVisible, std::string* pathDoubleClicked = nullptr);
@@ -63,34 +104,35 @@ public:
 	void SetCallback_OnPathDoubleClicked(const std::function<void(const std::string&)>& callback)	{ m_callback_OnPathDoubleClicked = callback; }
 
 private:
-	void Dialog_Top(bool* isVisible);
-	void Dialog_Middle();
-	void Dialog_Bottom(bool* isVisible);
-	bool NavigateToDirectory(const std::string& pathClicked);
-	void AddThumbnail(const std::string& filePath, Thumbnail_Type type = Thumbnail_Custom);
-	void HandleDrag(const std::pair<const std::basic_string<char>, Thumbnail>& entry);
-	void HandleClicking(const char* directoryEntry);
-	void ContextMenu();
+	void Show_Top(bool* isVisible);
+	void Show_Middle();
+	void Show_Bottom(bool* isVisible);
 
-	std::string m_title;
+	// Item functionality handling
+	void Item_Drag(FileDialog_Item* item);
+	void Item_Click(FileDialog_Item* item);
+	void Item_ContextMenu(FileDialog_Item* item);
 
-	// Display name, data
-	std::map<std::string, Thumbnail> m_directoryEntries;
-	std::string m_currentPath;
-	std::string m_currentFullPath;
+	// Misc
+	bool Dialog_UpdateFromDirectory(const char* path = nullptr);
+	void Dialog_Click();
+	void Dialog_ContextMenu();
+	bool Dialog_SetCurrentPath(const std::string& path);
 
-	FileDialog_Mode m_style;
+	FileDialog_Type m_type;
+	FileDialog_Operation m_operation;
 	FileDialog_Filter m_filter;
 
-	char m_selectedFileName[BUFFER_TEXT_DEFAULT]{};
-	char m_itemLabel[BUFFER_TEXT_DEFAULT]{};
-
+	std::string m_title;
+	std::string m_currentPath;
+	unsigned int m_currentPathID;
+	std::string m_inputBox;
+	std::vector<FileDialog_Item> m_items;
 	bool m_isWindow;
 	float m_itemSize;
 	bool m_selectionMade;
 	bool m_isDirty;
 	bool m_wasVisible;
-	std::unique_ptr<Directus::Stopwatch> m_stopwatch;
 	Directus::Context* m_context;
 
 	// Callbacks

@@ -27,6 +27,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Vector4.h"
 //=====================
 
+//= NAMESPACES ========================
+using namespace Directus::Math::Helper;
+//=====================================
+
 namespace Directus::Math
 {
 	class ENGINE_CLASS Matrix
@@ -35,6 +39,14 @@ namespace Directus::Math
 		Matrix()
 		{
 			SetIdentity();
+		}
+
+		Matrix (const Matrix& rhs)
+		{
+			m00 = rhs.m00; m01 = rhs.m01; m02 = rhs.m02; m03 = rhs.m03;
+			m10 = rhs.m10; m11 = rhs.m11; m12 = rhs.m12; m13 = rhs.m13;
+			m20 = rhs.m20; m21 = rhs.m21; m22 = rhs.m22; m23 = rhs.m23;
+			m30 = rhs.m30; m31 = rhs.m31; m32 = rhs.m32; m33 = rhs.m33;
 		}
 
 		Matrix(
@@ -372,6 +384,8 @@ namespace Directus::Math
 				m30 * rhs.m03 + m31 * rhs.m13 + m32 * rhs.m23 + m33 * rhs.m33
 			);
 		}
+
+		void operator*=(const Matrix& rhs) { (*this) = (*this) * rhs; }
 
 		Vector3 operator *(const Vector3& rhs) const
 		{

@@ -22,9 +22,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES ========================
 #include "Settings.h"
 #include <string>
+#include <fstream>
+#include <algorithm>
 #include "../FileSystem/FileSystem.h"
 #include "../Logging/Log.h"
-#include <fstream>
+#include "../Math/MathHelper.h"
 //===================================
 
 //= NAMESPACES ================
@@ -36,7 +38,7 @@ namespace SettingsIO
 {
 	ofstream fout;
 	ifstream fin;
-	string fileName;
+	string fileName = "Directus.ini";
 }
 
 namespace Directus
@@ -65,15 +67,7 @@ namespace Directus
 
 	Settings::Settings()
 	{
-		m_isFullScreen			= false;
-		m_vsync					= (int)Off;
-		m_isMouseVisible		= true;
-		m_resolution			= Vector2(1920, 1080);
-		m_shadowMapResolution	= 2048;
-		m_anisotropy			= 16;
-		SettingsIO::fileName	= "Directus3D.ini";
-		g_versionPugiXML		= "1.80";
-		m_maxFPS				= 165.0f;
+		m_maxThreadCount = thread::hardware_concurrency();
 	}
 
 	void Settings::Initialize()
@@ -87,16 +81,31 @@ namespace Directus
 			float resolutionY = 0;
 
 			// Read the settings
-			ReadSetting(SettingsIO::fin, "FullScreen",			m_isFullScreen);
-			ReadSetting(SettingsIO::fin, "VSync",				m_vsync);
-			ReadSetting(SettingsIO::fin, "IsMouseVisible",		m_isMouseVisible);
-			ReadSetting(SettingsIO::fin, "ResolutionWidth",		resolutionX);
-			ReadSetting(SettingsIO::fin, "ResolutionHeight",	resolutionY);
-			ReadSetting(SettingsIO::fin, "ShadowMapResolution",	m_shadowMapResolution);
-			ReadSetting(SettingsIO::fin, "Anisotropy",			m_anisotropy);
-			ReadSetting(SettingsIO::fin, "FPSLimit",			m_maxFPS);
-			
+			ReadSetting(SettingsIO::fin, "bFullScreen",				m_isFullScreen);
+			ReadSetting(SettingsIO::fin, "iVSync",					m_vsync);
+			ReadSetting(SettingsIO::fin, "bIsMouseVisible",			m_isMouseVisible);
+			ReadSetting(SettingsIO::fin, "fResolutionWidth",		resolutionX);
+			ReadSetting(SettingsIO::fin, "fResolutionHeight",		resolutionY);
+			ReadSetting(SettingsIO::fin, "iShadowMapResolution",	m_shadowMapResolution);
+			ReadSetting(SettingsIO::fin, "iAnisotropy",				m_anisotropy);
+			ReadSetting(SettingsIO::fin, "fFPSLimit",				m_fpsLimit);
+			ReadSetting(SettingsIO::fin, "iMaxThreadCount",			m_maxThreadCount);
+
 			m_resolution = Vector2(resolutionX, resolutionY);
+
+			if (m_fpsLimit == 0.0f)
+			{
+				m_fpsPolicy = FPS_Unlocked;
+				m_fpsLimit	= FLT_MAX;
+			}
+			else if (m_fpsLimit > 0.0f)
+			{
+				m_fpsPolicy = FPS_Locked;				
+			}
+			else
+			{
+				m_fpsPolicy = FPS_MonitorMatch;
+			}
 
 			// Close the file.
 			SettingsIO::fin.close();
@@ -107,17 +116,77 @@ namespace Directus
 			SettingsIO::fout.open(SettingsIO::fileName, ofstream::out);
 
 			// Write the settings
-			WriteSetting(SettingsIO::fout, "FullScreen",			m_isFullScreen);
-			WriteSetting(SettingsIO::fout, "VSync",					m_vsync);
-			WriteSetting(SettingsIO::fout, "IsMouseVisible",		m_isMouseVisible);
-			WriteSetting(SettingsIO::fout, "ResolutionWidth",		m_resolution.x);
-			WriteSetting(SettingsIO::fout, "ResolutionHeight",		m_resolution.y);
-			WriteSetting(SettingsIO::fout, "ShadowMapResolution",	m_shadowMapResolution);
-			WriteSetting(SettingsIO::fout, "Anisotropy",			m_anisotropy);
-			WriteSetting(SettingsIO::fout, "FPSLimit",				m_maxFPS);
+			WriteSetting(SettingsIO::fout, "bFullScreen",			m_isFullScreen);
+			WriteSetting(SettingsIO::fout, "iVSync",				m_vsync);
+			WriteSetting(SettingsIO::fout, "bIsMouseVisible",		m_isMouseVisible);
+			WriteSetting(SettingsIO::fout, "fResolutionWidth",		m_resolution.x);
+			WriteSetting(SettingsIO::fout, "fResolutionHeight",		m_resolution.y);
+			WriteSetting(SettingsIO::fout, "iShadowMapResolution",	m_shadowMapResolution);
+			WriteSetting(SettingsIO::fout, "iAnisotropy",			m_anisotropy);
+			WriteSetting(SettingsIO::fout, "fFPSLimit",				m_fpsLimit);
+			WriteSetting(SettingsIO::fout, "iMaxThreadCount",		m_maxThreadCount);
 
 			// Close the file.
 			SettingsIO::fout.close();
 		}
+
+		LOGF_INFO("Settings::Initialize: Resolution: %dx%d",		(int)m_resolution.x, (int)m_resolution.y);
+		LOGF_INFO("Settings::Initialize: Shadow resolution: %d",	m_shadowMapResolution);
+		LOGF_INFO("Settings::Initialize: Anisotropy: %d",			m_anisotropy);
+		LOGF_INFO("Settings::Initialize: Max fps: %f",				m_fpsLimit);
+		LOGF_INFO("Settings::Initialize: Max threads: %d",			m_maxThreadCount);
+	}
+
+	void Settings::DisplayMode_Add(unsigned int width, unsigned int height, unsigned int refreshRateNumerator, unsigned int refreshRateDenominator)
+	{
+		DisplayMode& mode = m_displayModes.emplace_back(width, height, refreshRateNumerator, refreshRateDenominator);
+
+		// Try to deduce the maximum frame rate based on how fast is the monitor
+		if (m_fpsPolicy == FPS_MonitorMatch)
+		{
+			FPS_SetLimit(Math::Helper::Max(m_fpsLimit, mode.refreshRate));
+		}
+	}
+
+	const Directus::DisplayMode& Settings::DisplayMode_GetFastest()
+	{
+		DisplayMode& fastestMode = m_displayModes.front();
+		for (const auto& mode : m_displayModes)
+		{
+			if (fastestMode.refreshRate < mode.refreshRate)
+			{
+				fastestMode = mode;
+			}
+		}
+
+		return fastestMode;
+	}
+
+	void Settings::DisplayAdapter_Add(const string& name, unsigned int memory, unsigned int vendorID, void* data)
+	{
+		m_displayAdapters.emplace_back(name, memory, vendorID, data);
+		sort(m_displayAdapters.begin(), m_displayAdapters.end(), [](const DisplayAdapter& adapter1, const DisplayAdapter& adapter2)
+		{
+			return adapter1.memory > adapter2.memory;
+		});		
+	}
+
+	void Settings::DisplayAdapter_SetPrimary(const DisplayAdapter* primaryAdapter)
+	{
+		if (!primaryAdapter)
+			return;
+
+		m_primaryAdapter = primaryAdapter;
+		LOGF_INFO("Settings::DisplayAdapter_SetPrimary: %s (%d MB)", primaryAdapter->name.c_str(), primaryAdapter->memory);
+	}
+
+	void Settings::FPS_SetLimit(float fps)
+	{
+		if (m_fpsLimit != fps)
+		{
+			LOGF_INFO("Settings::SetFPSLimit: FPS limit set to %f", fps);
+		}
+
+		m_fpsLimit = fps;
 	}
 }

@@ -16,19 +16,17 @@ DEALINGS IN THE SOFTWARE. */
 
 #pragma once
 
-//= INCLUDES =======
+//= INCLUDES =========
 #include "Context.h"
-//==================
-
-#define ENGINE_VERSION "v0.3 alpha"
-#define WIN32_LEAN_AND_MEAN
+#include "SubSystem.h"
+//====================
 
 namespace Directus
 {
 	enum Engine_Mode : unsigned long
 	{
 		Engine_Update	= 1UL << 0,	// Should the engine update?
-		Engine_Physics	= 1UL << 1, // Should physics update?	
+		Engine_Physics	= 1UL << 1, // Should the physics update?	
 		Engine_Render	= 1UL << 2,	// Should the engine render?
 		Engine_Game		= 1UL << 3,	// Is the engine running in game or editor mode?
 	};
@@ -70,6 +68,8 @@ namespace Directus
 		static void* GetWindowHandle() { return m_windowHandle; }
 		static void* GetWindowInstance() { return m_windowInstance; }
 		//=================================================================================
+
+		float GetDeltaTime();
 
 		// Returns the engine's context
 		Context* GetContext() { return m_context; }

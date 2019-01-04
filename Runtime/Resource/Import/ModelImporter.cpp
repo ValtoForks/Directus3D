@@ -19,135 +19,156 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ================================
+//= INCLUDES =================================
 #include "ModelImporter.h"
-#include <vector>
-#include <future>
-#include <assimp/scene.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/version.h>
+#include <assimp/ProgressHandler.hpp>
 #include "AssimpHelper.h"
-#include "../../Core/Context.h"
 #include "../../Core/Settings.h"
-#include "../../Core/EventSystem.h"
-#include "../../FileSystem/FileSystem.h"
-#include "../../Logging/Log.h"
-#include "../../Graphics/Model.h"
-#include "../../Graphics/Animation.h"
-#include "../../Graphics/Mesh.h"
-#include "../../Graphics/Material.h"
-#include "../../Scene/Scene.h"
-#include "../../Scene/Components/Transform.h"
-#include "../../Scene/GameObject.h"
+#include "../../Rendering/Model.h"
+#include "../../Rendering/Animation.h"
+#include "../../Rendering/Material.h"
+#include "../../World/Components/Renderable.h"
 #include "../ProgressReport.h"
-//===========================================
+//============================================
 
 //= NAMESPACES ================
 using namespace std;
 using namespace Directus::Math;
+using namespace Assimp;
 //=============================
 
-// Things for Assimp to do
-static auto ppsteps =
-aiProcess_CalcTangentSpace |
-aiProcess_GenSmoothNormals |
-aiProcess_JoinIdenticalVertices |
-aiProcess_ImproveCacheLocality |
-aiProcess_LimitBoneWeights |
-aiProcess_SplitLargeMeshes |
-aiProcess_Triangulate |
-aiProcess_GenUVCoords |
-aiProcess_SortByPType |
-aiProcess_FindDegenerates |
-aiProcess_FindInvalidData |
-aiProcess_FindInstances |
-aiProcess_ValidateDataStructure |
-aiProcess_OptimizeMeshes |
-aiProcess_Debone |
-aiProcess_ConvertToLeftHanded;
+// Implement Assimp::ProgressHandler so the engine can track the loading/proccesing progress
+class _ProgressHandler : public ProgressHandler
+{
+public:
+	_ProgressHandler(const string& filePath)
+	{
+		m_filePath = filePath;
+		m_fileName = Directus::FileSystem::GetFileNameFromFilePath(filePath);
 
-static int normalSmoothAngle = 80;
+		// Start progress tracking
+		Directus::ProgressReport& progress = Directus::ProgressReport::Get();
+		progress.Reset(Directus::g_progress_ModelImporter);
+		progress.SetIsLoading(Directus::g_progress_ModelImporter, true);
+	}
+
+	~_ProgressHandler() 
+	{
+		Directus::ProgressReport::Get().SetIsLoading(Directus::g_progress_ModelImporter, false);
+	}
+
+	bool Update(float percentage) { return true; }
+
+	void UpdateFileRead(int currentStep, int numberOfSteps) override
+	{
+		Directus::ProgressReport& progress = Directus::ProgressReport::Get();
+		progress.SetStatus(Directus::g_progress_ModelImporter, "Loading \"" + m_fileName + "\" from disk...");
+		progress.SetJobsDone(Directus::g_progress_ModelImporter, currentStep);
+		progress.SetJobCount(Directus::g_progress_ModelImporter, numberOfSteps);
+	}
+
+	void UpdatePostProcess(int currentStep, int numberOfSteps) override
+	{
+		Directus::ProgressReport& progress = Directus::ProgressReport::Get();
+		progress.SetStatus(Directus::g_progress_ModelImporter, "Post-Processing \"" + m_fileName + "\"");
+		progress.SetJobsDone(Directus::g_progress_ModelImporter, currentStep);
+		progress.SetJobCount(Directus::g_progress_ModelImporter, numberOfSteps);
+	}
+
+private:
+	string m_filePath;
+	string m_fileName;
+};
 
 namespace Directus
 {
-	vector<string> materialNames;
+	namespace _ModelImporter
+	{
+		// Things for Assimp to do
+		static auto flags =
+			aiProcess_CalcTangentSpace |
+			aiProcess_GenSmoothNormals |
+			aiProcess_JoinIdenticalVertices |
+			aiProcess_ImproveCacheLocality |
+			aiProcess_LimitBoneWeights |
+			aiProcess_SplitLargeMeshes |
+			aiProcess_Triangulate |
+			aiProcess_GenUVCoords |
+			aiProcess_SortByPType |
+			aiProcess_FindDegenerates |
+			aiProcess_FindInvalidData |
+			aiProcess_FindInstances |
+			aiProcess_ValidateDataStructure |
+			aiProcess_OptimizeMeshes |
+			aiProcess_Debone |
+			aiProcess_ConvertToLeftHanded;
+
+		static float normalSmoothAngle = 90.0f; // Default is 45, max is 175
+	}
 
 	ModelImporter::ModelImporter(Context* context)
 	{
-		m_context = context;
-		m_model = nullptr;
+		m_context	= context;
 
-		// Log version
-		int major = aiGetVersionMajor();
-		int minor = aiGetVersionMinor();
-		int rev = aiGetVersionRevision();
-		Settings::Get().g_versionAssimp = to_string(major) + "." + to_string(minor) + "." + to_string(rev);
-		LOG_INFO("ModelImporter: Assimp " + Settings::Get().g_versionAssimp);
+		// Get version
+		int major	= aiGetVersionMajor();
+		int minor	= aiGetVersionMinor();
+		int rev		= aiGetVersionRevision();
+		Settings::Get().m_versionAssimp = to_string(major) + "." + to_string(minor) + "." + to_string(rev);
 	}
 
-	ModelImporter::~ModelImporter()
-	{
-
-	}
-
-	bool ModelImporter::Load(Model* model, const string& filePath)
+	bool ModelImporter::Load(shared_ptr<Model> model, const string& filePath)
 	{
 		if (!m_context)
 		{
-			LOG_ERROR("Aborting loading. ModelImporter requires an initialized Context");
+			LOG_ERROR("ModelImporter::Load: Uninitialized context");
 			return false;
 		}
 
-		m_model = model;
 		m_modelPath = filePath;
 
 		// Set up an Assimp importer
-		Assimp::Importer importer;
-		importer.SetPropertyInteger(AI_CONFIG_PP_ICL_PTCACHE_SIZE, 64); // Optimize mesh
-		importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_LINE | aiPrimitiveType_POINT); // Remove points and lines.
-		importer.SetPropertyInteger(AI_CONFIG_PP_RVC_FLAGS, aiComponent_CAMERAS | aiComponent_LIGHTS); // Remove cameras and lights
-		importer.SetPropertyInteger(AI_CONFIG_PP_CT_MAX_SMOOTHING_ANGLE, normalSmoothAngle); // Default is 45, max is 175
+		Importer importer;
+		//importer.SetPropertyInteger(AI_CONFIG_PP_ICL_PTCACHE_SIZE, 64);										// Optimize mesh
+		importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_LINE | aiPrimitiveType_POINT);	// Remove points and lines.
+		importer.SetPropertyInteger(AI_CONFIG_PP_RVC_FLAGS, aiComponent_CAMERAS | aiComponent_LIGHTS);		// Remove cameras and lights
+		importer.SetPropertyFloat(AI_CONFIG_PP_CT_MAX_SMOOTHING_ANGLE, _ModelImporter::normalSmoothAngle);	// Normal smoothing angle
+		importer.SetProgressHandler(new _ProgressHandler(filePath));										// Progress tracking
 
 		// Read the 3D model file from disk
-		ProgressReport::Get().Reset(g_progress_ModelImporter);
-		ProgressReport::Get().SetStatus(g_progress_ModelImporter, "Loading \"" + FileSystem::GetFileNameFromFilePath(filePath) + "\" from disk...");
-		const aiScene* scene = importer.ReadFile(m_modelPath, ppsteps);
-		if (!scene)
+		if (const aiScene* scene = importer.ReadFile(m_modelPath, _ModelImporter::flags))
 		{
-			LOG_ERROR("ModelImporter: Failed to load \"" + model->GetResourceName() + "\". " + importer.GetErrorString());
-			ProgressReport::Get().SetIsLoading(g_progress_ModelImporter, false);
+			FIRE_EVENT(EVENT_WORLD_STOP);
+
+			ReadNodeHierarchy(scene, scene->mRootNode, model);
+			ReadAnimations(scene, model);
+			model->Geometry_Update();
+
+			FIRE_EVENT(EVENT_WORLD_START);
+		}
+		else
+		{
+			LOGF_ERROR("ModelImporter::Load: %s", importer.GetErrorString());
 			return false;
 		}
 
-		// Map all the nodes as GameObjects while maintaining hierarchical relationships
-		// as well as their properties (meshes, materials, textures etc.).
-		ReadNodeHierarchy(model, scene, scene->mRootNode);
-
-		// Load animation (in case there are any)
-		ReadAnimations(model, scene);
-
-		// Cleanup
 		importer.FreeScene();
-
-		// Stats
-		ProgressReport::Get().SetIsLoading(g_progress_ModelImporter, false);
-
-		FIRE_EVENT(EVENT_MODEL_LOADED);
 
 		return true;
 	}
 
-	//= PROCESSING ===============================================================================
-	void ModelImporter::ReadNodeHierarchy(Model* model, const aiScene* assimpScene, aiNode* assimpNode, const weak_ptr<GameObject> parentNode, weak_ptr<GameObject> newNode)
+	void ModelImporter::ReadNodeHierarchy(const aiScene* assimpScene, aiNode* assimpNode, shared_ptr<Model>& model, Actor* parentNode, Actor* newNode)
 	{
-		auto scene = m_context->GetSubsystem<Scene>();
+		auto scene = m_context->GetSubsystem<World>();
 
 		// Is this the root node?
-		if (!assimpNode->mParent || newNode.expired())
+		if (!assimpNode->mParent || !newNode)
 		{
-			newNode = scene->GameObject_CreateAdd();
-			model->SetRootGameObject(newNode.lock());
+			newNode = scene->Actor_Create().get();
+			model->SetRootActor(newNode->GetPtrShared());
 
 			int jobCount;
 			ComputeNodeCount(assimpNode, &jobCount);
@@ -160,59 +181,59 @@ namespace Directus
 		if (assimpNode->mParent)
 		{
 			string name = assimpNode->mName.C_Str();
-			newNode.lock()->SetName(name);
+			newNode->SetName(name);
 
-			ProgressReport::Get().SetStatus(g_progress_ModelImporter, "Processing: " + name);
+			ProgressReport::Get().SetStatus(g_progress_ModelImporter, "Creating actor for " + name);
 		}
 		else
 		{
 			string name = FileSystem::GetFileNameNoExtensionFromFilePath(m_modelPath);
-			newNode.lock()->SetName(name);
+			newNode->SetName(name);
 
-			ProgressReport::Get().SetStatus(g_progress_ModelImporter, "Processing: " + name);
+			ProgressReport::Get().SetStatus(g_progress_ModelImporter, "Creating actor for " + name);
 		}
 		//============================================================================
 
 		// Set the transform of parentNode as the parent of the newNode's transform
-		Transform* parentTrans = !parentNode.expired() ? parentNode.lock()->GetTransform_PtrRaw() : nullptr;
-		newNode.lock()->GetTransform_PtrRaw()->SetParent(parentTrans);
+		Transform* parentTrans = parentNode ? parentNode->GetTransform_PtrRaw() : nullptr;
+		newNode->GetTransform_PtrRaw()->SetParent(parentTrans);
 
 		// Set the transformation matrix of the Assimp node to the new node
-		AssimpHelper::SetGameObjectTransform(newNode, assimpNode);
+		AssimpHelper::SetActorTransform(assimpNode, newNode);
 
 		// Process all the node's meshes
 		for (unsigned int i = 0; i < assimpNode->mNumMeshes; i++)
 		{
-			weak_ptr<GameObject> gameobject = newNode; // set the current gameobject
-			aiMesh* mesh = assimpScene->mMeshes[assimpNode->mMeshes[i]]; // get mesh
-			string name = assimpNode->mName.C_Str(); // get name
+			Actor* actor		= newNode; // set the current actor
+			aiMesh* assimpMesh	= assimpScene->mMeshes[assimpNode->mMeshes[i]]; // get mesh
+			string name			= assimpNode->mName.C_Str(); // get name
 
-			// if this node has many meshes, then assign a new gameobject for each one of them
+			// if this node has many meshes, then assign a new actor for each one of them
 			if (assimpNode->mNumMeshes > 1)
 			{
-				gameobject = scene->GameObject_CreateAdd(); // create
-				gameobject.lock()->GetTransform_PtrRaw()->SetParent(newNode.lock()->GetTransform_PtrRaw()); // set parent
+				actor = scene->Actor_Create().get(); // create
+				actor->GetTransform_PtrRaw()->SetParent(newNode->GetTransform_PtrRaw()); // set parent
 				name += "_" + to_string(i + 1); // set name
 			}
 
-			// Set gameobject name
-			gameobject.lock()->SetName(name);
+			// Set actor name
+			actor->SetName(name);
 
 			// Process mesh
-			LoadMesh(model, mesh, assimpScene, gameobject);
+			LoadMesh(assimpScene, assimpMesh, model, actor);
 		}
 
 		// Process children
 		for (unsigned int i = 0; i < assimpNode->mNumChildren; i++)
 		{
-			weak_ptr<GameObject> child = scene->GameObject_CreateAdd();
-			ReadNodeHierarchy(model, assimpScene, assimpNode->mChildren[i], newNode, child);
+			shared_ptr<Actor> child = scene->Actor_Create();
+			ReadNodeHierarchy(assimpScene, assimpNode->mChildren[i], model, newNode, child.get());
 		}
 
-		ProgressReport::Get().JobDone(g_progress_ModelImporter);
+		ProgressReport::Get().IncrementJobsDone(g_progress_ModelImporter);
 	}
 
-	void ModelImporter::ReadAnimations(Model* model, const aiScene* scene)
+	void ModelImporter::ReadAnimations(const aiScene* scene, shared_ptr<Model>& model)
 	{
 		for (unsigned int i = 0; i < scene->mNumAnimations; i++)
 		{
@@ -264,25 +285,37 @@ namespace Directus
 		}
 	}
 
-	void ModelImporter::LoadMesh(Model* model, aiMesh* assimpMesh, const aiScene* assimpScene, const weak_ptr<GameObject>& gameobject)
+	void ModelImporter::LoadMesh(const aiScene* assimpScene, aiMesh* assimpMesh, shared_ptr<Model>& model, Actor* parentActor)
 	{
-		if (!model || !assimpMesh || !assimpScene || gameobject.expired())
+		if (!model || !assimpMesh || !assimpScene || !parentActor)
 			return;
 
-		//= GEOMETRY =====================================
-		// Create a new Mesh
-		auto mesh = make_shared<Mesh>(m_context);
-		mesh->SetResourceName(assimpMesh->mName.C_Str());
+		//= MESH ======================================================================
+		vector<RHI_Vertex_PosUVTBN> vertices;
+		AssimpMesh_ExtractVertices(assimpMesh, &vertices);
 
-		// Populate mesh with vertices
-		LoadAiMeshVertices(assimpMesh, mesh); 
-
-		// Populate mesh with indices
-		LoadAiMeshIndices(assimpMesh, mesh); 
+		vector<unsigned int> indices;
+		AssimpMesh_ExtractIndices(assimpMesh, &indices);
 
 		// Add the mesh to the model
-		model->AddMesh(mesh, gameobject);
-		//================================================
+		unsigned int indexOffset;
+		unsigned int vertexOffset;
+		model->Geometry_Append(indices, vertices, &indexOffset, &vertexOffset);
+
+		// Add a renderable component to this Actor
+		auto renderable	= parentActor->AddComponent<Renderable>();
+
+		// Set the geometry
+		renderable->Geometry_Set(
+			parentActor->GetName(),
+			indexOffset,
+			(unsigned int)indices.size(),
+			vertexOffset,
+			(unsigned int)vertices.size(),
+			BoundingBox(vertices),
+			model
+		);
+		//=============================================================================
 
 		//= MATERIAL ========================================================================
 		auto material = shared_ptr<Material>();
@@ -291,7 +324,7 @@ namespace Directus
 			// Get aiMaterial
 			aiMaterial* assimpMaterial = assimpScene->mMaterials[assimpMesh->mMaterialIndex];
 			// Convert it and add it to the model
-			model->AddMaterial(AiMaterialToMaterial(model, assimpMaterial), gameobject);
+			model->AddMaterial(AiMaterialToMaterial(assimpMaterial, model), parentActor->GetPtrShared());
 		}
 		//===================================================================================
 
@@ -303,24 +336,7 @@ namespace Directus
 		//==============================================================================
 	}
 
-	void ModelImporter::LoadAiMeshIndices(aiMesh* assimpMesh, const shared_ptr<Mesh>& mesh)
-	{
-		// Get indices by iterating through each face of the mesh.
-		for (unsigned int faceIndex = 0; faceIndex < assimpMesh->mNumFaces; faceIndex++)
-		{
-			aiFace face = assimpMesh->mFaces[faceIndex];
-
-			if (face.mNumIndices < 3)
-				continue;
-
-			for (unsigned int j = 0; j < face.mNumIndices; j++)
-			{
-				mesh->GetIndices().emplace_back(face.mIndices[j]);
-			}
-		}
-	}
-
-	void ModelImporter::LoadAiMeshVertices(aiMesh* assimpMesh, const shared_ptr<Mesh>& mesh)
+	void ModelImporter::AssimpMesh_ExtractVertices(aiMesh* assimpMesh, vector<RHI_Vertex_PosUVTBN>* vertices)
 	{
 		Vector3 position;
 		Vector2 uv;
@@ -328,7 +344,7 @@ namespace Directus
 		Vector3 tangent;
 		Vector3 bitangent;
 
-		mesh->GetVertices().reserve(assimpMesh->mNumVertices);
+		vertices->reserve(assimpMesh->mNumVertices);
 
 		for (unsigned int vertexIndex = 0; vertexIndex < assimpMesh->mNumVertices; vertexIndex++)
 		{
@@ -360,7 +376,7 @@ namespace Directus
 			}
 
 			// save the vertex
-			mesh->GetVertices().emplace_back(position, uv, normal, tangent, bitangent);
+			vertices->emplace_back(position, uv, normal, tangent, bitangent);
 
 			// reset the vertex for use in the next loop
 			uv			= Vector2::Zero;
@@ -370,7 +386,26 @@ namespace Directus
 		}
 	}
 
-	shared_ptr<Material> ModelImporter::AiMaterialToMaterial(Model* model, aiMaterial* assimpMaterial)
+	void ModelImporter::AssimpMesh_ExtractIndices(aiMesh* assimpMesh, vector<unsigned int>* indices)
+	{
+		indices->reserve(assimpMesh->mNumFaces);
+
+		// Get indices by iterating through each face of the mesh.
+		for (unsigned int faceIndex = 0; faceIndex < assimpMesh->mNumFaces; faceIndex++)
+		{
+			aiFace& face = assimpMesh->mFaces[faceIndex];
+
+			if (face.mNumIndices < 3)
+				continue;
+
+			for (unsigned int j = 0; j < face.mNumIndices; j++)
+			{
+				indices->emplace_back(face.mIndices[j]);
+			}
+		}
+	}
+
+	shared_ptr<Material> ModelImporter::AiMaterialToMaterial(aiMaterial* assimpMaterial, shared_ptr<Model>& model)
 	{
 		if (!model || !assimpMaterial)
 		{
@@ -393,18 +428,18 @@ namespace Directus
 		int result = assimpMaterial->Get(AI_MATKEY_TWOSIDED, isTwoSided);
 		if (result == aiReturn_SUCCESS && isTwoSided)
 		{
-			material->SetCullMode(CullNone);
+			material->SetCullMode(Cull_None);
 		}
 
 		// DIFFUSE COLOR
 		aiColor4D colorDiffuse(1.0f, 1.0f, 1.0f, 1.0f);
 		aiGetMaterialColor(assimpMaterial, AI_MATKEY_COLOR_DIFFUSE, &colorDiffuse);
-		material->SetColorAlbedo(AssimpHelper::ToVector4(colorDiffuse));
-
+		
 		// OPACITY
 		aiColor4D opacity(1.0f, 1.0f, 1.0f, 1.0f);
 		aiGetMaterialColor(assimpMaterial, AI_MATKEY_OPACITY, &opacity);
-		material->SetOpacity(opacity.r);
+
+		material->SetColorAlbedo(Vector4(colorDiffuse.r, colorDiffuse.g, colorDiffuse.b, opacity.r));
 
 		// TEXTURES
 		auto LoadMatTex = [this, &model, &assimpMaterial, &material](aiTextureType assimpTex, TextureType engineTex)
@@ -441,9 +476,7 @@ namespace Directus
 
 		return material;
 	}
-	//============================================================================================
 
-	//= HELPER FUNCTIONS =================================================================================================================================
 	string ModelImporter::ValidateTexturePath(const string& originalTexturePath)
 	{
 		// Models usually return a texture path which is relative to the model's directory.

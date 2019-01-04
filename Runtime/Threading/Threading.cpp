@@ -19,19 +19,21 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ==============
+//= INCLUDES ================
 #include "Threading.h"
-//=========================
+#include "../Core/Settings.h"
+//===========================
 
-//= NAMESPACES ======
-using namespace  std;
-//===================
+//= NAMESPACES =====
+using namespace std;
+//==================
 
 namespace Directus
 {
 	Threading::Threading(Context* context) : Subsystem(context)
 	{
-		m_stopping = false;
+		m_stopping		= false;
+		m_threadCount	= Settings::Get().ThreadCountMax_Get() - 1;
 	}
 
 	Threading::~Threading()
@@ -60,10 +62,11 @@ namespace Directus
 
 	bool Threading::Initialize()
 	{
-		for (int i = 0; i < m_threadCount; i++)
+		for (unsigned int i = 0; i < m_threadCount; i++)
 		{
 			m_threads.emplace_back(thread(&Threading::Invoke, this));
 		}
+		LOGF_INFO("Threading::Initialize: %d threads have been created", m_threadCount);
 
 		return true;
 	}

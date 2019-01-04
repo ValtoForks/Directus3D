@@ -19,38 +19,43 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES ============================
+//= INCLUDES ================================
 #include "Editor.h"
-#include <memory>
-#include "Core/Context.h"
-#include "UI/ImGui_Implementation.h"
-#include "UI/Widgets/Widget.h"
+#include "ImGui/imgui_impl_win32.h"
+#include "ImGui/imgui_impl_dx11.h"
 #include "UI/Widgets/Widget_MenuBar.h"
 #include "UI/Widgets/Widget_Properties.h"
 #include "UI/Widgets/Widget_Console.h"
-#include "UI/Widgets/Widget_Scene.h"
+#include "UI/Widgets/Widget_World.h"
 #include "UI/Widgets/Widget_Assets.h"
 #include "UI/Widgets/Widget_Viewport.h"
 #include "UI/Widgets/Widget_Toolbar.h"
-#include "UI/ThumbnailProvider.h"
+#include "UI/Widgets/Widget_ProgressDialog.h"
+#include "UI/IconProvider.h"
 #include "UI/EditorHelper.h"
-//=======================================
+#include "RHI/RHI_Device.h"
+#include "Rendering/Renderer.h"
+#include "ImGui/imgui_internal.h"
+//===========================================
 
 //= NAMESPACES ==========
 using namespace std;
 using namespace Directus;
 //=======================
 
+#define DOCKING_ENABLED ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable
+namespace _Editor
+{
+	Widget* widget_menuBar		= nullptr;
+	Widget* widget_toolbar		= nullptr;
+	Widget* widget_world		= nullptr;
+	const char* dockspaceName	= "EditorDockspace";
+}
+
 Editor::Editor()
 {
-	m_context = nullptr;
-	m_widgets.emplace_back(make_unique<Widget_MenuBar>());
-	m_widgets.emplace_back(make_unique<Widget_Toolbar>());
-	m_widgets.emplace_back(make_unique<Widget_Properties>());
-	m_widgets.emplace_back(make_unique<Widget_Console>());
-	m_widgets.emplace_back(make_unique<Widget_Scene>());
-	m_widgets.emplace_back(make_unique<Widget_Assets>());
-	m_widgets.emplace_back(make_unique<Widget_Viewport>());
+	// Add console widget early so it picks up the engine's initialization output
+	m_widgets.emplace_back(make_unique<Widget_Console>(nullptr));
 }
 
 Editor::~Editor()
@@ -58,20 +63,45 @@ Editor::~Editor()
 	Shutdown();
 }
 
-void Editor::Initialize(Context* context)
+bool Editor::Initialize(Context* context, void* windowHandle)
 {
-	m_context = context;
-	ThumbnailProvider::Get().Initialize(context);
+	m_context	= context;
+	m_rhiDevice	= context->GetSubsystem<Renderer>()->GetRHIDevice();
+
+	Widgets_Create();
+
+	if (!m_rhiDevice->GetDevice<ID3D11Device>() || !m_rhiDevice->GetDeviceContext<ID3D11DeviceContext>())
+	{
+		LOG_ERROR("Editor::Initialize: Invalid RHI device.");
+		return false;
+	}
+
+	// ImGui context creation
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	Settings::Get().m_versionImGui = IMGUI_VERSION;
+
+	// ImGui configuration
+	ImGuiIO& io = ImGui::GetIO();
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+	io.ConfigFlags |= ImGuiConfigFlags_ViewportsNoTaskBarIcon;
+	io.ConfigWindowsResizeFromEdges = true;
+
+	// ImGui backend setup
+	ImGui_ImplWin32_Init(windowHandle);
+	ImGui_ImplDX11_Init(m_rhiDevice->GetDevice<ID3D11Device>(), m_rhiDevice->GetDeviceContext<ID3D11DeviceContext>());
+
+	// Initialization of misc custom systems
+	IconProvider::Get().Initialize(context);
 	EditorHelper::Get().Initialize(context);
 
-	ImGui_ImplDX11_Init(context);
-
+	// Apply style
 	ApplyStyle();
 
-	for (auto& widget : m_widgets)
-	{
-		widget->Initialize(context);
-	}
+	m_initialized = true;
+	return true;
 }
 
 void Editor::Resize()
@@ -80,44 +110,139 @@ void Editor::Resize()
 	ImGui_ImplDX11_CreateDeviceObjects();
 }
 
-void Editor::Update()
+void Editor::Tick(float deltaTime)
 {	
-	// [ImGui] Start new frame
+	if (!m_initialized)
+		return;
+
+	// ImGui implementation - start frame
 	ImGui_ImplDX11_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
 
-	// Do editor stuff
-	DrawEditor();
-	EditorHelper::Get().Update();
+	// Editor update
+	Widgets_Tick(deltaTime);
 
-	// [ImGui] End frame
+	// ImGui implementation - end frame
 	ImGui::Render();
+
+	m_rhiDevice->EventBegin("Pass_ImGui");
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+	m_rhiDevice->EventEnd();
+
+	// Update and Render additional Platform Windows
+	if (DOCKING_ENABLED)
+	{
+		ImGui::UpdatePlatformWindows();
+		ImGui::RenderPlatformWindowsDefault();
+	}
 }
 
 void Editor::Shutdown()
 {
+	if (!m_initialized)
+		return;
+
 	m_widgets.clear();
 	m_widgets.shrink_to_fit();
 
+	// ImGui implementation - shutdown
 	ImGui_ImplDX11_Shutdown();
+	ImGui_ImplWin32_Shutdown();
+	ImGui::DestroyContext();
 }
 
-void Editor::DrawEditor()
+void Editor::Widgets_Create()
 {
+	m_widgets.emplace_back(make_unique<Widget_ProgressDialog>(m_context));
+	m_widgets.emplace_back(make_unique<Widget_Assets>(m_context));
+	m_widgets.emplace_back(make_unique<Widget_Viewport>(m_context));
+	m_widgets.emplace_back(make_unique<Widget_Properties>(m_context));
+
+	m_widgets.emplace_back(make_unique<Widget_MenuBar>(m_context));
+	_Editor::widget_menuBar = m_widgets.back().get();
+
+	m_widgets.emplace_back(make_unique<Widget_Toolbar>(m_context));
+	_Editor::widget_toolbar = m_widgets.back().get();
+
+	m_widgets.emplace_back(make_unique<Widget_World>(m_context));
+	_Editor::widget_world = m_widgets.back().get();
+}
+
+void Editor::Widgets_Tick(float deltaTime)
+{
+	if (DOCKING_ENABLED) { DockSpace_Begin(); }
+
 	for (auto& widget : m_widgets)
 	{
-		if (widget->GetIsWindow())
-		{
-			widget->Begin();
-		}
-
-		widget->Update();
-
-		if (widget->GetIsWindow())
-		{
-			widget->End();
-		}
+		widget->Begin();
+		widget->Tick(deltaTime);
+		widget->End();
 	}
+
+	if (DOCKING_ENABLED) { DockSpace_End(); }
+}
+
+void Editor::DockSpace_Begin()
+{
+	bool open = true;
+
+	// Flags
+	ImGuiWindowFlags window_flags =
+		ImGuiWindowFlags_MenuBar |
+		ImGuiWindowFlags_NoDocking |
+		ImGuiWindowFlags_NoTitleBar |
+		ImGuiWindowFlags_NoCollapse |
+		ImGuiWindowFlags_NoResize |
+		ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_NoBringToFrontOnFocus |
+		ImGuiWindowFlags_NoNavFocus;
+
+	// Size, Pos
+	float offsetY = _Editor::widget_menuBar->GetHeight() + _Editor::widget_toolbar->GetHeight();
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
+	ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x, viewport->Pos.y + offsetY));
+	ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, viewport->Size.y - offsetY));
+	ImGui::SetNextWindowViewport(viewport->ID);
+
+	// Style
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+	ImGui::SetNextWindowBgAlpha(0.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+	ImGui::Begin(_Editor::dockspaceName, &open, window_flags);
+	ImGui::PopStyleVar();
+	ImGui::PopStyleVar(2);
+
+	// Dock space
+	ImGuiID dockspace_id = ImGui::GetID(_Editor::dockspaceName);
+	if (!ImGui::DockBuilderGetNode(dockspace_id))
+	{
+		// Reset/clear current docking state
+		ImGui::DockBuilderRemoveNode(dockspace_id);
+		ImGui::DockBuilderAddNode(dockspace_id, ImGui::GetMainViewport()->Size);
+
+		// DockBuilderSplitNode(ImGuiID node_id, ImGuiDir split_dir, float size_ratio_for_node_at_dir, ImGuiID* out_id_dir, ImGuiID* out_id_other);
+		ImGuiID dock_main_id		= dockspace_id;
+		ImGuiID dock_right_id		= ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Right, 0.2f, nullptr, &dock_main_id);
+		ImGuiID dock_rightDown_id	= ImGui::DockBuilderSplitNode(dock_right_id, ImGuiDir_Down, 0.6f, nullptr, &dock_right_id);
+		ImGuiID dock_down_id		= ImGui::DockBuilderSplitNode(dock_main_id, ImGuiDir_Down, 0.3f, nullptr, &dock_main_id);
+		ImGuiID dock_downRight_id	= ImGui::DockBuilderSplitNode(dock_down_id, ImGuiDir_Right, 0.6f, nullptr, &dock_down_id);
+
+		// Dock windows	
+		ImGui::DockBuilderDockWindow("World",		dock_right_id);
+		ImGui::DockBuilderDockWindow("Properties",	dock_rightDown_id);
+		ImGui::DockBuilderDockWindow("Console",		dock_down_id);
+		ImGui::DockBuilderDockWindow("Assets",		dock_downRight_id);
+		ImGui::DockBuilderDockWindow("Viewport",	dock_main_id);
+		ImGui::DockBuilderFinish(dock_main_id);
+	}
+	ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruDockspace);
+}
+
+void Editor::DockSpace_End()
+{
+	ImGui::End();
 }
 
 void Editor::ApplyStyle()
@@ -135,8 +260,8 @@ void Editor::ApplyStyle()
 	ImVec4 backgroundMedium		= ImVec4(0.26f, 0.26f, 0.27f, 1.0f);
 	ImVec4 backgroundLight		= ImVec4(0.37f, 0.38f, 0.39f, 1.0f);
 	ImVec4 highlightBlue		= ImVec4(0.172f, 0.239f, 0.341f, 1.0f);	
-	ImVec4 highlightBlueActive	= ImVec4(0.182f, 0.249f, 0.361f, 1.0f);
 	ImVec4 highlightBlueHovered	= ImVec4(0.202f, 0.269f, 0.391f, 1.0f); 
+	ImVec4 highlightBlueActive	= ImVec4(0.382f, 0.449f, 0.561f, 1.0f);
 	ImVec4 barBackground		= ImVec4(0.078f, 0.082f, 0.09f, 1.0f);
 	ImVec4 bar					= ImVec4(0.164f, 0.180f, 0.231f, 1.0f);
 	ImVec4 barHovered			= ImVec4(0.411f, 0.411f, 0.411f, 1.0f);
@@ -158,7 +283,7 @@ void Editor::ApplyStyle()
 	//style.ColumnsMinSpacing	= 50.0f;
 	//style.GrabMinSize			= 14.0f;
 	style.GrabRounding			= roundness;
-	//style.ScrollbarSize		= 12.0f;
+	style.ScrollbarSize			= 20.0f;
 	style.ScrollbarRounding		= roundness;	
 
 	// Colors
@@ -180,11 +305,11 @@ void Editor::ApplyStyle()
 	style.Colors[ImGuiCol_ScrollbarGrabHovered]		= barHovered;
 	style.Colors[ImGuiCol_ScrollbarGrabActive]		= barActive;
 	style.Colors[ImGuiCol_CheckMark]				= white;
-	style.Colors[ImGuiCol_SliderGrab]				= bar;
-	style.Colors[ImGuiCol_SliderGrabActive]			= barActive;
+	style.Colors[ImGuiCol_SliderGrab]				= highlightBlue;
+	style.Colors[ImGuiCol_SliderGrabActive]			= highlightBlueHovered;
 	style.Colors[ImGuiCol_Button]					= barActive;
 	style.Colors[ImGuiCol_ButtonHovered]			= highlightBlue;
-	style.Colors[ImGuiCol_ButtonActive]				= highlightBlueHovered;
+	style.Colors[ImGuiCol_ButtonActive]				= highlightBlueActive;
 	style.Colors[ImGuiCol_Header]					= highlightBlue; // selected items (tree, menu bar etc.)
 	style.Colors[ImGuiCol_HeaderHovered]			= highlightBlueHovered; // hovered items (tree, menu bar etc.)
 	style.Colors[ImGuiCol_HeaderActive]				= highlightBlueActive;
@@ -194,7 +319,7 @@ void Editor::ApplyStyle()
 	style.Colors[ImGuiCol_ResizeGrip]				= backgroundMedium;
 	style.Colors[ImGuiCol_ResizeGripHovered]		= highlightBlue;
 	style.Colors[ImGuiCol_ResizeGripActive]			= highlightBlueHovered;
-	//style.Colors[ImGuiCol_PlotLines]				= ImVec4(0.86f, 0.93f, 0.89f, 0.63f);
+	style.Colors[ImGuiCol_PlotLines]				= ImVec4(0.0f, 0.7f, 0.77f, 1.0f);
 	//style.Colors[ImGuiCol_PlotLinesHovered]		= ImVec4(0.92f, 0.18f, 0.29f, 1.00f);
 	style.Colors[ImGuiCol_PlotHistogram]			= highlightBlue; // Also used for progress bar
 	style.Colors[ImGuiCol_PlotHistogramHovered]		= highlightBlueHovered;
@@ -204,5 +329,5 @@ void Editor::ApplyStyle()
 	//style.Colors[ImGuiCol_ModalWindowDarkening]	= ImVec4(0.20f, 0.22f, 0.27f, 0.73f);
 
 	ImGuiIO& io = ImGui::GetIO();
-	io.Fonts->AddFontFromFileTTF("Standard Assets\\Editor\\CalibriBold.ttf", fontSize);
+	io.Fonts->AddFontFromFileTTF("Standard Assets\\Fonts\\CalibriBold.ttf", fontSize);
 }

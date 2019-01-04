@@ -1,10 +1,11 @@
 #pragma once
 
-//= INCLUDES ========
+//= INCLUDES =====================
 #include <string>
 #include <Windows.h>
 #include <functional>
-//===================
+#include "FileSystem/FileSystem.h"
+//================================
 
 namespace Window
 {
@@ -43,23 +44,10 @@ namespace Window
 		return 0;
 	}
 
-	inline std::wstring s2ws(const std::string& str)
-	{
-		int len;
-		int slength = (int)str.length() + 1;
-		len = MultiByteToWideChar(CP_ACP, 0, str.c_str(), slength, nullptr, 0); 
-		wchar_t* buf = new wchar_t[len];
-		MultiByteToWideChar(CP_ACP, 0, str.c_str(), slength, buf, len);
-		std::wstring r(buf);
-		delete[] buf;
-		return r;
-	}
-
-
 	inline bool Create(HINSTANCE instance, const std::string& title)
 	{
 		g_instance = instance;
-		std::wstring windowTitle = s2ws(title);
+		std::wstring windowTitle = Directus::FileSystem::StringToWString(title);
 		int windowWidth = GetSystemMetrics(SM_CXSCREEN);
 		int windowHeight = GetSystemMetrics(SM_CYSCREEN);
 		LPCWSTR className = L"myWindowClass";

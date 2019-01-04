@@ -22,23 +22,25 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #pragma once
 
 //= INCLUDES ==============
-#include "../Input/Input.h"
 #include <angelscript.h>
 //=========================
 
 namespace Directus
 {
+	class Context;
+
 	class ScriptInterface
 	{
 	public:
 		void Register(asIScriptEngine* scriptEngine, Context* context);
+
 	private:
 		void RegisterEnumerations();
 		void RegisterTypes();
 		void RegisterSettings();
 		void RegisterInput();
 		void RegisterTime();
-		void RegisterGameObject();
+		void Registeractor();
 		void RegisterTransform();
 		void RegisterRenderable();
 		void RegisterMaterial();

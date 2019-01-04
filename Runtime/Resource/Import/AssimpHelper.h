@@ -27,8 +27,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../../Math/Vector2.h"
 #include "../../Math/Vector3.h"
 #include "../../Math/Matrix.h"
-#include "../../Scene/GameObject.h"
-#include "../../Scene/Components/Transform.h"
+#include "../../World/Actor.h"
+#include "../../World/Components/Transform.h"
 //===========================================
 
 namespace Directus
@@ -46,18 +46,18 @@ namespace Directus
 			);
 		}
 
-		static void SetGameObjectTransform(const std::weak_ptr<GameObject>& gameObject, aiNode* node)
+		static void SetActorTransform(aiNode* node, Actor* actor)
 		{
-			if (gameObject.expired())
+			if (!actor)
 				return;
 
 			// Convert to engine matrix
 			Math::Matrix mEngine = aiMatrix4x4ToMatrix(node->mTransformation);
 
 			// Apply position, rotation and scale
-			gameObject.lock()->GetTransform_PtrRaw()->SetPositionLocal(mEngine.GetTranslation());
-			gameObject.lock()->GetTransform_PtrRaw()->SetRotationLocal(mEngine.GetRotation());
-			gameObject.lock()->GetTransform_PtrRaw()->SetScaleLocal(mEngine.GetScale());
+			actor->GetTransform_PtrRaw()->SetPositionLocal(mEngine.GetTranslation());
+			actor->GetTransform_PtrRaw()->SetRotationLocal(mEngine.GetRotation());
+			actor->GetTransform_PtrRaw()->SetScaleLocal(mEngine.GetScale());
 		}
 
 		static Math::Vector4 ToVector4(const aiColor4D& aiColor)

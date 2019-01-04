@@ -16,23 +16,20 @@ DEALINGS IN THE SOFTWARE. */
 
 #pragma once
 
-//= INLUDES ===========
+//= INCLUDES ==========
 #include "EngineDefs.h"
 //=====================
 
 namespace Directus
 {
-	class ENGINE_CLASS Subsystem
-	{
-		friend class Context;
-	public:
-		Subsystem(Context* context)
-		{
-			m_context = context;
-		}
-		virtual ~Subsystem() {}
+	class Context;
 
-		virtual bool Initialize() { return true; }
+	class ENGINE_CLASS Subsystem
+	{		
+	public:
+		Subsystem(Context* context)	{ m_context = context; }
+		virtual ~Subsystem()		{}
+		virtual bool Initialize()	{ return true; }
 
 	protected:
 		Context* m_context;

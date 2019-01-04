@@ -21,18 +21,18 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES =================
+//= INCLUDES ==============
 #include "../ImGui/imgui.h"
 #include "EditorHelper.h"
-#include "ThumbnailProvider.h"
+#include "IconProvider.h"
 #include <variant>
-//============================
+//=========================
 
 enum DragPayloadType
 {
 	DragPayload_Unknown,
 	DragPayload_Texture,
-	DragPayload_GameObject,
+	DragPayload_Actor,
 	DragPayload_Model,
 	DragPayload_Audio,
 	DragPayload_Script
@@ -40,14 +40,14 @@ enum DragPayloadType
 
 struct DragDropPayload
 {
-	typedef std::variant<const char*, std::string, unsigned int> payloadVariant;
-	DragDropPayload(DragPayloadType type = DragPayload_Unknown, payloadVariant data = nullptr)
+	typedef std::variant<const char*, unsigned int> dataVariant;
+	DragDropPayload(DragPayloadType type = DragPayload_Unknown, dataVariant data = nullptr)
 	{
-		this->type	= type;
-		this->data	= data;
+		this->type = type;
+		this->data = data;
 	}
 	DragPayloadType type;
-	payloadVariant data;
+	dataVariant data;
 };
 
 static bool g_isDragging = false;
@@ -62,7 +62,11 @@ public:
 		return instance;
 	}
 
-	bool DragBegin() { return ImGui::BeginDragDropSource(); }
+	bool DragBegin() 
+	{ 
+		return ImGui::BeginDragDropSource(); 
+	}
+
 	void DragPayload(const DragDropPayload& payload, void* thumbnailShaderResource = nullptr)
 	{
 		ImGui::SetDragDropPayload((const char*)&payload.type, (void*)&payload, sizeof(payload), ImGuiCond_Once);
@@ -70,12 +74,12 @@ public:
 		{
 			THUMBNAIL_IMAGE_BY_SHADER_RESOURCE(thumbnailShaderResource, 50);
 		}
-		else
-		{
-			THUMBNAIL_IMAGE_BY_ENUM(Thumbnail_File_Default, 50);
-		}
 	}
-	void DragEnd() { ImGui::EndDragDropSource(); }
+
+	void DragEnd() 
+	{ 
+		ImGui::EndDragDropSource(); 
+	}
 
 	DragDropPayload* GetPayload(DragPayloadType type)
 	{

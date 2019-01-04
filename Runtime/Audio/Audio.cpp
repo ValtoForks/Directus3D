@@ -21,15 +21,15 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES =============================
 #include "Audio.h"
-#include "fmod.hpp"
-#include "fmod_errors.h"
-#include "../Logging/Log.h"
-#include "../Core/EventSystem.h"
+#include <fmod.hpp>
+#include <fmod_errors.h>
 #include <sstream>
-#include "../Core/Settings.h"
-#include "../Scene/Components/Transform.h"
-#include "../Profiling/Profiler.h"
+#include "../Logging/Log.h"
 #include "../Core/Engine.h"
+#include "../Core/EventSystem.h"
+#include "../Core/Settings.h"
+#include "../Profiling/Profiler.h"
+#include "../World/Components/Transform.h"
 //========================================
 
 //= NAMESPACES ======
@@ -48,8 +48,8 @@ namespace Directus
 		m_initialized		= false;
 		m_listener			= nullptr;
 
-		// Subscribe to update event
-		SUBSCRIBE_TO_EVENT(EVENT_UPDATE, EVENT_HANDLER(Update));
+		SUBSCRIBE_TO_EVENT(EVENT_WORLD_UNLOAD, [this](Variant) { m_listener = nullptr; });
+		SUBSCRIBE_TO_EVENT(EVENT_TICK, EVENT_HANDLER(Update));
 	}
 
 	Audio::~Audio()
@@ -123,14 +123,13 @@ namespace Directus
 			return false;
 		}
 
-		// Log version
+		// Get version
 		stringstream ss;
 		ss << hex << version;
 		string major	= ss.str().erase(1, 4);
 		string minor	= ss.str().erase(0, 1).erase(2, 2);
 		string rev		= ss.str().erase(0, 3);
-		Settings::Get().g_versionFMOD = major + "." + minor + "." + rev;
-		LOG_INFO("Audio: FMOD " + Settings::Get().g_versionFMOD);
+		Settings::Get().m_versionFMOD = major + "." + minor + "." + rev;
 
 		m_initialized = true;
 		return true;
@@ -145,7 +144,7 @@ namespace Directus
 		if (!m_initialized)
 			return false;
 
-		PROFILE_FUNCTION_BEGIN();
+		TIME_BLOCK_START_CPU();
 
 		// Update FMOD
 		m_resultFMOD = m_systemFMOD->update();
@@ -179,7 +178,7 @@ namespace Directus
 		}
 		//=============================================================
 
-		PROFILE_FUNCTION_END();
+		TIME_BLOCK_END_CPU();
 
 		return true;
 	}

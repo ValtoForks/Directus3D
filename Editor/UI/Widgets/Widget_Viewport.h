@@ -28,14 +28,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 class Widget_Viewport : public Widget
 {
 public:
-	Widget_Viewport();
-
-	void Initialize(Directus::Context* context) override;	
-	void Update() override;
+	Widget_Viewport(Directus::Context* context);
+	bool Begin() override;
+	void Tick(float deltaTime) override;
 
 private:
-	void ShowTopToolbar();
-	void ShowFrame();
+	void ShowFrame(float deltaTime);
 	void MousePicking();
-	void SetRenderFlags();
+	float m_timeSinceLastResChange;
 };

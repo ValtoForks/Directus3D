@@ -22,16 +22,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES =====================
 #include "FontImporter.h"
 #include "ft2build.h"
-#include FT_FREETYPE_H  
+#include FT_FREETYPE_H 
 #include "../../Logging/Log.h"
 #include "../../Math/MathHelper.h"
 #include "../../Core/Settings.h"
 //================================
 
-//= NAMESPACES ================
+//= NAMESPACES ========================
 using namespace std;
 using namespace Directus::Math;
-//=============================
+using namespace Helper;
+//=====================================
 
 // A minimum size for a texture holding all visible ASCII characters
 #define GLYPH_START 32
@@ -59,13 +60,12 @@ namespace Directus
 			LOG_ERROR("FreeType: Failed to initialize.");
 		}
 
-		// Log version
+		// Get version
 		FT_Int major;
 		FT_Int minor;
 		FT_Int rev;
 		FT_Library_Version(m_library, &major, &minor, &rev);
-		Settings::Get().g_versionFreeType = to_string(major) + "." + to_string(minor) + "." + to_string(rev);
-		LOG_INFO("FontImporter: FreeType " + Settings::Get().g_versionFreeType);
+		Settings::Get().m_versionFreeType = to_string(major) + "." + to_string(minor) + "." + to_string(rev);
 	}
 
 	// Glyph metrics:
@@ -100,7 +100,7 @@ namespace Directus
 	//              |------------- advanceX ----------->|
 
 
-	bool FontImporter::LoadFont(const string& filePath, int size, vector<std::byte>& atlasBuffer, unsigned int& atlasWidth, unsigned int& atlasHeight, map<unsigned int, Glyph>& glyphs)
+	bool FontImporter::LoadFromFile(const string& filePath, int size, vector<std::byte>& atlasBuffer, unsigned int& atlasWidth, unsigned int& atlasHeight, map<unsigned int, Glyph>& glyphs)
 	{
 		FT_Face face;
 
@@ -155,14 +155,15 @@ namespace Directus
 				penY += rowHeight;
 			}
 
-			auto bytes = (std::byte*)bitmap->buffer;
+			auto bytes	= (byte*)bitmap->buffer;
+			int	pitch	= bitmap->pitch;
 			for (unsigned int row = 0; row < bitmap->rows; row++)
 			{
 				for (unsigned int col = 0; col < bitmap->width; col++)
 				{
 					int x = penX + col;
 					int y = penY + row;
-					atlasBuffer[y * atlasWidth + x] = bytes[row * bitmap->pitch + col];
+					atlasBuffer[y * atlasWidth + x] = bytes[row * pitch + col];
 				}
 			}
 

@@ -65,33 +65,67 @@ namespace Directus
 		Insert
 	};
 
-	class ENGINE_CLASS IInput : public Subsystem
+	enum Button_Gamepad
+	{
+		DPad_Up,
+		DPad_Down,
+		DPad_Left,
+		DPad_Right,
+		Button_A,
+		Button_B,
+		Button_X,
+		Button_Y,
+		Start,
+		Back,
+		Left_Thumb,
+		Right_Thumb,
+		Left_Shoulder,
+		Right_Shoulder	
+	};
+
+	class ENGINE_CLASS Input : public Subsystem
 	{
 	public:
-		IInput(Context* context) : Subsystem(context)
-		{
-			m_mouseWheel = 0;
-			m_mouseWheelDelta = 0;
-		}
-		virtual ~IInput() {}
+		Input(Context* context);
+		~Input();
 
-		// SUBSYSTEM ============================================
-		bool Initialize() override { return Input_Initialize(); }
-		//=======================================================
+		// SUBSYSTEM ==============
+		bool Initialize() override;
+		//=========================
 
-		bool GetButtonKeyboard(Button_Keyboard button) { return m_keyboardState[(int)button]; }
-		bool GetButtonMouse(Button_Mouse button) { return m_mouseState[(int)button]; }
-		const Math::Vector2& GetMousePosition() { return m_mousePos; }
-		const Math::Vector2& GetMouseDelta() { return m_mouseDelta; }
+		void Tick();
+		
+		bool GetButtonKeyboard(Button_Keyboard button)	{ return m_keyboardButtons[(int)button]; }
+		bool GetButtonMouse(Button_Mouse button)		{ return m_mouseButtons[(int)button]; }
+		const Math::Vector2& GetMousePosition()			{ return m_mousePos; }
+		const Math::Vector2& GetMouseDelta()			{ return m_mouseDelta; }
 
-	protected:
-		virtual bool Input_Initialize() = 0;
+	private:
+		bool ReadMouse();
+		bool ReadKeyboard();
+		bool ReadGamepad();
 
-		bool m_mouseState[3];
-		bool m_keyboardState[84];
-		Math::Vector2 m_mousePos;
-		Math::Vector2 m_mouseDelta;
-		float m_mouseWheel;
-		float m_mouseWheelDelta;
+		// Vibrate the gamepad. Motor speed range is from 0.0 to 1.0f
+		// The left motor is the low-frequency rumble motor. The right motor is the high-frequency rumble motor. 
+		// The two motors are not the same, and they create different vibration effects.
+		bool VibrateGamepad(float leftMotorSpeed, float rightMotorSpeed);
+
+		// Mouse
+		bool m_mouseButtons[3]		= { false };
+		Math::Vector2 m_mousePos	= Math::Vector2::Zero;
+		Math::Vector2 m_mouseDelta	= Math::Vector2::Zero;
+		float m_mouseWheel			= 0;
+		float m_mouseWheelDelta		= 0;
+
+		// Keyboard
+		bool m_keyboardButtons[83] = { false };
+
+		// Gamepad
+		bool m_isGamepadConnected;
+		bool m_gamepadButtons[13] = { false };
+		Math::Vector2 m_thumbstickLeft;
+		Math::Vector2 m_thumbstickRight;
+		float m_triggerLeft;
+		float m_triggerRight;
 	};
 }

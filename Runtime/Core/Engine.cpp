@@ -23,19 +23,18 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Engine.h"
 #include "Timer.h"
 #include "Settings.h"
+#include "Stopwatch.h"
+#include "../Rendering/Renderer.h"
+#include "../Core/EventSystem.h"
 #include "../Logging/Log.h"
 #include "../Threading/Threading.h"
 #include "../Resource/ResourceManager.h"
 #include "../Scripting/Scripting.h"
-#include "../Graphics/Renderer.h"
 #include "../Audio/Audio.h"
-#include "../Core/EngineBackends.h"
-#include "../Core/EventSystem.h"
-#include "../Input/DInput/DInput.h"
 #include "../Physics/Physics.h"
-#include "../Scene/Scene.h"
-#include "Stopwatch.h"
+#include "../World/World.h"
 #include "../Profiling/Profiler.h"
+#include "../Input/Input.h"
 //======================================
 
 //= NAMESPACES =====
@@ -73,118 +72,101 @@ namespace Directus
 		m_context->RegisterSubsystem(new Input(m_context));
 		m_context->RegisterSubsystem(new Threading(m_context));
 		m_context->RegisterSubsystem(new ResourceManager(m_context));
-		m_context->RegisterSubsystem(new Graphics(m_context));
-		m_context->RegisterSubsystem(new Renderer(m_context));
+		m_context->RegisterSubsystem(new Renderer(m_context, m_drawHandle));
 		m_context->RegisterSubsystem(new Audio(m_context));
 		m_context->RegisterSubsystem(new Physics(m_context));
 		m_context->RegisterSubsystem(new Scripting(m_context));
-		m_context->RegisterSubsystem(new Scene(m_context));
+		m_context->RegisterSubsystem(new World(m_context));
 	}
 
 	bool Engine::Initialize()
 	{
-		bool success = true;
-
 		// Timer
 		m_timer = m_context->GetSubsystem<Timer>();
 		if (!m_timer->Initialize())
 		{
-			LOG_ERROR("Failed to initialize Timer subsystem");
-			success = false;
+			LOG_ERROR("Engine::Initialize: Failed to initialize");
+			return false;
 		}
 	
 		// Input
 		if (!m_context->GetSubsystem<Input>()->Initialize())
 		{
-			LOG_ERROR("Failed to initialize Input subsystem");
-			success = false;
+			LOG_ERROR("Engine::Initialize: Failed to initialize Input");
+			return false;
 		}
 
 		// Threading
 		if (!m_context->GetSubsystem<Threading>()->Initialize())
 		{
-			LOG_ERROR("Failed to initialize Multithreading subsystem");
-			success = false;
+			LOG_ERROR("Engine::Initialize: Failed to initialize Multithreading");
+			return false;
 		}
 
 		// ResourceManager
 		if (!m_context->GetSubsystem<ResourceManager>()->Initialize())
 		{
-			LOG_ERROR("Failed to initialize ResourceManager subsystem");
-			success = false;
-		}
-
-		// Graphics
-		m_context->GetSubsystem<Graphics>()->SetHandle(m_drawHandle);
-		if (!m_context->GetSubsystem<Graphics>()->Initialize())
-		{
-			LOG_ERROR("Failed to initialize Graphics subsystem");
-			success = false;
+			LOG_ERROR("Engine::Initialize: Failed to initialize ResourceManager");
+			return false;
 		}
 
 		// Renderer
 		if (!m_context->GetSubsystem<Renderer>()->Initialize())
 		{
-			LOG_ERROR("Failed to initialize Renderer subsystem");
-			success = false;
+			LOG_ERROR("Engine::Initialize: Failed to initialize Renderer");
+			return false;
 		}
 
 		// Audio
 		if (!m_context->GetSubsystem<Audio>()->Initialize())
 		{
-			LOG_ERROR("Failed to initialize Audio subsystem");
-			success = false;
+			LOG_ERROR("Engine::Initialize: Failed to initialize Audio");
+			return false;
 		}
 
 		// Physics
 		if (!m_context->GetSubsystem<Physics>()->Initialize())
 		{
-			LOG_ERROR("Failed to initialize Physics subsystem");
-			success = false;
+			LOG_ERROR("Engine::Initialize: Failed to initialize Physics");
+			return false;
 		}
 
 		// Scripting
 		if (!m_context->GetSubsystem<Scripting>()->Initialize())
 		{
-			LOG_ERROR("Failed to initialize Scripting subsystem");
-			success = false;
+			LOG_ERROR("Engine::Initialize: Failed to initialize Scripting");
+			return false;
 		}
 
 		// Scene
-		if (!m_context->GetSubsystem<Scene>()->Initialize())
+		if (!m_context->GetSubsystem<World>()->Initialize())
 		{
-			LOG_ERROR("Failed to initialize Scene subsystem");
-			success = false;
+			LOG_ERROR("Engine::Initialize: Failed to initialize Scene");
+			return false;
 		}
 
 		Profiler::Get().Initialize(m_context);
 		g_stopwatch->Start();
 
-		return success;
+		return true;
 	}
 
 	void Engine::Tick()
 	{
-		//= MAX FPS =======================================================================
-		float maxFPS = EngineMode_IsSet(Engine_Game) ? Settings::Get().GetMaxFPS() : 60.0f;
-		if (g_stopwatch->GetElapsedTimeSec() < 1.0 / maxFPS)
-		{
-			return;
-		}
-		g_stopwatch->Start();
-		//=================================================================================
-		
 		m_timer->Tick();
+		FIRE_EVENT(EVENT_FRAME_START);
 
 		if (EngineMode_IsSet(Engine_Update))
 		{
-			FIRE_EVENT_DATA(EVENT_UPDATE, m_timer->GetDeltaTimeSec());
+			FIRE_EVENT_DATA(EVENT_TICK, m_timer->GetDeltaTimeSec());
 		}
 
 		if (EngineMode_IsSet(Engine_Render))
 		{
 			FIRE_EVENT(EVENT_RENDER);
 		}
+
+		FIRE_EVENT(EVENT_FRAME_END);
 	}
 
 	void Engine::Shutdown()
@@ -202,5 +184,10 @@ namespace Directus
 		m_drawHandle		= drawHandle;
 		m_windowHandle		= windowHandle;
 		m_windowInstance	= windowInstance;
+	}
+
+	float Engine::GetDeltaTime()
+	{
+		return m_timer->GetDeltaTimeSec();
 	}
 }

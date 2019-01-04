@@ -19,9 +19,12 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-//= INCLUDES =====
+//= INCLUDES ========
 #include "Timer.h"
-//================
+#include "Engine.h"
+#include "Settings.h"
+#include <thread>
+//===================
 
 //= NAMESPACES ========
 using namespace std;
@@ -32,22 +35,29 @@ namespace Directus
 {
 	Timer::Timer(Context* context) : Subsystem(context)
 	{
-		m_deltaTimeSec	= 0.0f;
+		time_a			= high_resolution_clock::now();
+		time_b			= high_resolution_clock::now();
 		m_deltaTimeMs	= 0.0f;
-	}
-
-	Timer::~Timer()
-	{
-
 	}
 
 	void Timer::Tick()
 	{
-		auto currentTime = high_resolution_clock::now();
-		duration<double, milli> ms = currentTime - m_previousTime;
-		m_previousTime = currentTime;
+		// Compute work time
+		time_a								= high_resolution_clock::now();
+		duration<double, milli> time_work	= time_a - time_b;
+		
+		// Compute sleep time (fps limiting)
+		double maxFPS		= Settings::Get().FPS_GetLimit();
+		double minDt		= 1000.0 / maxFPS;
+		double dtRemaining	= minDt - time_work.count();
+		if (dtRemaining >  0)
+		{
+			this_thread::sleep_for(milliseconds((int64_t)dtRemaining));
+		}
 
-		m_deltaTimeMs	= (float)ms.count();
-		m_deltaTimeSec	= (float)(ms.count() / 1000);
+		// Compute delta
+		time_b								= high_resolution_clock::now();
+		duration<double, milli> time_sleep	= time_b - time_a;
+		m_deltaTimeMs						= (time_work + time_sleep).count();
 	}
 }

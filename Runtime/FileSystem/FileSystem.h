@@ -34,13 +34,13 @@ static const char* METADATA_EXTENSION		= ".xml";
 static const char* METADATA_TYPE_TEXTURE	= "Texture";
 static const char* METADATA_TYPE_AUDIOCLIP	= "Audio_Clip";
 // Engine file extensions
-static const char* SCENE_EXTENSION			= ".directus";
-static const char* MATERIAL_EXTENSION		= ".mat";
-static const char* MODEL_EXTENSION			= ".model";
-static const char* PREFAB_EXTENSION			= ".prefab";
-static const char* SHADER_EXTENSION			= ".shader";
-static const char* TEXTURE_EXTENSION		= ".texture";
-static const char* MESH_EXTENSION			= ".mesh";
+static const char* EXTENSION_WORLD			= ".world";
+static const char* EXTENSION_MATERIAL		= ".mat";
+static const char* EXTENSION_MODEL			= ".model";
+static const char* EXTENSION_PREFAB			= ".prefab";
+static const char* EXTENSION_SHADER			= ".shader";
+static const char* EXTENSION_TEXTURE		= ".texture";
+static const char* EXTENSION_MESH			= ".mesh";
 //=========================================================
 
 namespace Directus
@@ -109,16 +109,17 @@ namespace Directus
 		static std::string GetStringBetweenExpressions(const std::string& str, const std::string& firstExpression, const std::string& secondExpression);
 		static std::string ConvertToUppercase(const std::string& lower);		
 		static std::string ReplaceExpression(const std::string& str, const std::string& from, const std::string& to);
+		static std::wstring StringToWString(const std::string& str);
 		//==============================================================================================================================================
 
-		//= SUPPORTED ASSET FILE FORMATS ===========================
-		static std::vector<std::string> GetSupportedImageFormats();
-		static std::vector<std::string> GetSupportedAudioFormats();
-		static std::vector<std::string> GetSupportedModelFormats();
-		static std::vector<std::string> GetSupportedShaderFormats();
-		static std::vector<std::string> GetSupportedScriptFormats();
-		static std::vector<std::string> GetSupportedFontFormats();
-		//==========================================================
+		//= SUPPORTED ASSET FILE FORMATS ===============================================================
+		static std::vector<std::string> GetSupportedImageFormats()	{ return m_supportedImageFormats; }
+		static std::vector<std::string> GetSupportedAudioFormats()	{ return m_supportedAudioFormats; }
+		static std::vector<std::string> GetSupportedModelFormats()	{ return m_supportedModelFormats; }
+		static std::vector<std::string> GetSupportedShaderFormats()	{ return m_supportedShaderFormats; }
+		static std::vector<std::string> GetSupportedScriptFormats()	{ return m_supportedScriptFormats; }
+		static std::vector<std::string> GetSupportedFontFormats()	{ return m_supportedFontFormats; }
+		//==============================================================================================
 
 	private:
 		static std::vector<std::string> m_supportedImageFormats;

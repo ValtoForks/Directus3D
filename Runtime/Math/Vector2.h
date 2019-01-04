@@ -49,6 +49,24 @@ namespace Directus::Math
 			this->y = y;
 		}
 
+		Vector2(int x, int y)
+		{
+			this->x = (float)x;
+			this->y = (float)y;
+		}
+
+		Vector2(unsigned int x, unsigned int y)
+		{
+			this->x = (float)x;
+			this->y = (float)y;
+		}
+		
+		Vector2(float x)
+		{
+			this->x = x;
+			this->y = x;
+		}
+
 		~Vector2() {}
 
 		//= ADDITION ===============================

@@ -25,11 +25,19 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Widget.h"
 //=================
 
+namespace Directus
+{
+	class Renderer;
+}
+
 class Widget_Toolbar : public Widget
 {
 public:
-	Widget_Toolbar();
-	void Initialize(Directus::Context* context) override;
-	void Begin() override;
-	void Update() override;
+	Widget_Toolbar(Directus::Context* context);
+	bool Begin() override;
+	void Tick(float deltaTime) override;
+
+private:
+	void ShowRendererOptions();
+	Directus::Renderer* m_renderer;
 };

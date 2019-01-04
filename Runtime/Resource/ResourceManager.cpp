@@ -21,7 +21,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES ===================
 #include "ResourceManager.h"
-#include "../Scene/GameObject.h"
+#include "../World/Actor.h"
 #include "../Core/EventSystem.h"
 //==============================
 
@@ -35,7 +35,7 @@ namespace Directus
 	ResourceManager::ResourceManager(Context* context) : Subsystem(context)
 	{
 		m_resourceCache = nullptr;
-		SUBSCRIBE_TO_EVENT(EVENT_SCENE_CLEARED, EVENT_HANDLER(Clear));
+		SUBSCRIBE_TO_EVENT(EVENT_WORLD_UNLOAD, EVENT_HANDLER(Clear));
 	}
 
 	bool ResourceManager::Initialize()
@@ -50,12 +50,12 @@ namespace Directus
 		m_fontImporter->Initialize();
 		
 		// Add engine standard resource directories
-		AddStandardResourceDirectory(Resource_Texture, "Standard Assets//Textures//");
-		AddStandardResourceDirectory(Resource_Font, "Standard Assets//Fonts//");
-		AddStandardResourceDirectory(Resource_Shader, "Standard Assets//Shaders//");
-		AddStandardResourceDirectory(Resource_Cubemap, "Standard Assets//Cubemaps//");
-		AddStandardResourceDirectory(Resource_Script, "Standard Assets//Scripts//");
-		AddStandardResourceDirectory(Resource_Model, "Standard Assets//Models//");
+		AddStandardResourceDirectory(Resource_Texture,	"Standard Assets//Textures//");
+		AddStandardResourceDirectory(Resource_Font,		"Standard Assets//Fonts//");
+		AddStandardResourceDirectory(Resource_Shader,	"Standard Assets//Shaders//");
+		AddStandardResourceDirectory(Resource_Cubemap,	"Standard Assets//Cubemaps//");
+		AddStandardResourceDirectory(Resource_Script,	"Standard Assets//Scripts//");
+		AddStandardResourceDirectory(Resource_Model,	"Standard Assets//Models//");
 		AddStandardResourceDirectory(Resource_Material, "Standard Assets//Materials//");
 
 		// Add project directory
@@ -64,12 +64,12 @@ namespace Directus
 		return true;
 	}
 
-	void ResourceManager::AddStandardResourceDirectory(ResourceType type, const string& directory)
+	void ResourceManager::AddStandardResourceDirectory(Resource_Type type, const string& directory)
 	{
 		m_standardResourceDirectories[type] = directory;
 	}
 
-	const string& ResourceManager::GetStandardResourceDirectory(ResourceType type)
+	const string& ResourceManager::GetStandardResourceDirectory(Resource_Type type)
 	{
 		for (auto& directory : m_standardResourceDirectories)
 		{

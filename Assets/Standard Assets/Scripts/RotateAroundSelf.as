@@ -1,6 +1,6 @@
 class RotateAroundSelf
 {
-	GameObject @gameobject;
+	Actor @actor;
 	Transform @transform;
 	
 	//= MISC ===================
@@ -10,10 +10,10 @@ class RotateAroundSelf
 	//==========================
 	
 	// Constructor
-	RotateAroundSelf(GameObject @obj)
+	RotateAroundSelf(Actor @actorIn)
 	{
-		@gameobject = obj;
-		@transform = gameobject.GetTransform();	
+		@actor = actorIn;
+		@transform = actor.GetTransform();	
 	}
 	
 	// Use this for initialization
@@ -29,7 +29,7 @@ class RotateAroundSelf
 		float speed =  m_speed * time.GetDeltaTime();
 		m_rotation += speed;
 		
-		Quaternion newRot = QuaternionFromEuler(m_startingRot.x, m_rotation, m_startingRot.z);	
+		Quaternion newRot = QuaternionFromEuler(Vector3(m_startingRot.x, m_rotation, m_startingRot.z));	
 		transform.SetRotationLocal(newRot);
 	}
 }

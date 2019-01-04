@@ -23,10 +23,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "AudioClip.h"
 #include <fmod.hpp>
 #include <fmod_errors.h>
-#include "../Logging/Log.h"
-#include "../Scene/Components/Transform.h"
+#include "../World/Components/Transform.h"
 #include "Audio.h"
-#include <map>
 //========================================
 
 //= NAMESPACES ================
@@ -37,12 +35,8 @@ using namespace FMOD;
 
 namespace Directus
 {
-	AudioClip::AudioClip(Context* context) : IResource(context)
+	AudioClip::AudioClip(Context* context) : IResource(context, Resource_Audio)
 	{
-		//= IResource ================
-		RegisterResource<AudioClip>();
-		//============================
-
 		// AudioClip
 		m_transform		= nullptr;
 		m_systemFMOD	= (System*)context->GetSubsystem<Audio>()->GetSystemFMOD();
@@ -76,7 +70,7 @@ namespace Directus
 		return m_playMode == Play_Memory ? CreateSound(filePath) : CreateStream(filePath);
 	}
 
-	unsigned int AudioClip::GetMemory()
+	unsigned int AudioClip::GetMemoryUsage()
 	{
 		return 0; // have to find a way to get that
 	}

@@ -21,21 +21,37 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES =========
-#include "SubSystem.h"
+//= INCLUDES ==========
 #include <vector>
-//====================
+#include "EngineDefs.h"
+#include "SubSystem.h"
+//=====================
 
 namespace Directus
 {
 	class ENGINE_CLASS Context
 	{
 	public:
-		Context();
-		~Context();
+		Context() {}
+
+		~Context()
+		{
+			for (auto i = m_subsystems.size() - 1; i > 0; i--)
+				delete m_subsystems[i];
+
+			// Index 0 is the actual Engine instance, which is the instance
+			// that called this destructor in the first place. A deletion
+			// will result in a crash.
+		}
 
 		// Register a subsystem
-		void RegisterSubsystem(Subsystem* subsystem);
+		void RegisterSubsystem(Subsystem* subsystem)
+		{
+			if (!subsystem)
+				return;
+
+			m_subsystems.emplace_back(subsystem);
+		}
 
 		// Get a subsystem
 		template <class T> T* GetSubsystem();
@@ -46,6 +62,7 @@ namespace Directus
 	template <class T>
 	T* Context::GetSubsystem()
 	{
+		// Compare T with subsystem types
 		for (const auto& subsystem : m_subsystems)
 		{
 			if (typeid(T) == typeid(*subsystem))

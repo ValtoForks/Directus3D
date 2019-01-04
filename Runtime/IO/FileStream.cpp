@@ -21,15 +21,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES ===================
 #include "FileStream.h"
-#include "../Scene/GameObject.h"
+#include <iostream>
 #include "../Math/Vector2.h"
 #include "../Math/Vector3.h"
 #include "../Math/Vector4.h"
 #include "../Math/Quaternion.h"
+#include "../Math/BoundingBox.h"
+#include "../World/Actor.h"
 #include "../Logging/Log.h"
-#include "../Graphics/Vertex.h"
-#include <iostream>
-//=============================
+#include "../RHI/RHI_Vertex.h"
+//==============================
 
 //= NAMESPACES ================
 using namespace std;
@@ -48,7 +49,7 @@ namespace Directus
 			out.open(path, ios::out | ios::binary);
 			if (out.fail())
 			{
-				LOG_ERROR("StreamIO: Failed to open \"" + path + "\" for writing.");
+				LOGF_ERROR("StreamIO: Failed to open \"%s\" for writing", path.c_str());
 				return;
 			}
 		}
@@ -57,7 +58,7 @@ namespace Directus
 			in.open(path, ios::in | ios::binary);
 			if(in.fail())
 			{
-				LOG_ERROR("StreamIO: Failed to open \"" + path + "\" for reading.");
+				LOGF_ERROR("StreamIO: Failed to open \"%s\" for reading", path.c_str());
 				return;
 			}
 		}
@@ -81,7 +82,7 @@ namespace Directus
 
 	void FileStream::Write(const string& value)
 	{
-		unsigned int length = (unsigned int)value.length();
+		auto length = (unsigned int)value.length();
 		Write(length);
 
 		out.write(const_cast<char*>(value.c_str()), length);
@@ -89,7 +90,7 @@ namespace Directus
 
 	void FileStream::Write(const vector<string>& value)
 	{
-		unsigned int size = (unsigned int)value.size();
+		auto size = (unsigned int)value.size();
 		Write(size);
 
 		for (unsigned int i = 0; i < size; i++)
@@ -118,30 +119,35 @@ namespace Directus
 		out.write(reinterpret_cast<const char*>(&value), sizeof(Quaternion));
 	}
 
-	void FileStream::Write(const vector<VertexPosTexTBN>& value)
+	void FileStream::Write(const BoundingBox& value)
 	{
-		unsigned int length = (unsigned int)value.size();
+		out.write(reinterpret_cast<const char*>(&value), sizeof(BoundingBox));
+	}
+
+	void FileStream::Write(const vector<RHI_Vertex_PosUVTBN>& value)
+	{
+		auto length = (unsigned int)value.size();
 		Write(length);
-		out.write(reinterpret_cast<const char*>(&value[0]), sizeof(VertexPosTexTBN) * length);
+		out.write(reinterpret_cast<const char*>(&value[0]), sizeof(RHI_Vertex_PosUVTBN) * length);
 	}
 
 	void FileStream::Write(const vector<unsigned int>& value)
 	{
-		unsigned int length = (unsigned int)value.size();
+		auto length = (unsigned int)value.size();
 		Write(length);
 		out.write(reinterpret_cast<const char*>(&value[0]), sizeof(unsigned int) * length);
 	}
 
 	void FileStream::Write(const vector<unsigned char>& value)
 	{
-		unsigned int size = (unsigned int)value.size();
+		auto size = (unsigned int)value.size();
 		Write(size);
 		out.write(reinterpret_cast<const char*>(&value[0]), sizeof(unsigned char) * size);
 	}
 
 	void FileStream::Write(const vector<std::byte>& value)
 	{
-		unsigned int size = (unsigned int)value.size();
+		auto size = (unsigned int)value.size();
 		Write(size);
 		out.write(reinterpret_cast<const char*>(&value[0]), sizeof(std::byte) * size);
 	}
@@ -175,6 +181,11 @@ namespace Directus
 		in.read(reinterpret_cast<char*>(value), sizeof(Quaternion));
 	}
 
+	void FileStream::Read(BoundingBox* value)
+	{
+		in.read(reinterpret_cast<char*>(value), sizeof(BoundingBox));
+	}
+
 	void FileStream::Read(vector<string>* vec)
 	{
 		if (!vec)
@@ -194,7 +205,7 @@ namespace Directus
 		}
 	}
 
-	void FileStream::Read(vector<VertexPosTexTBN>* vec)
+	void FileStream::Read(vector<RHI_Vertex_PosUVTBN>* vec)
 	{
 		if (!vec)
 			return;
@@ -207,7 +218,7 @@ namespace Directus
 		vec->reserve(length);
 		vec->resize(length);
 
-		in.read(reinterpret_cast<char*>(vec->data()), sizeof(VertexPosTexTBN) * length);
+		in.read(reinterpret_cast<char*>(vec->data()), sizeof(RHI_Vertex_PosUVTBN) * length);
 	}
 
 	void FileStream::Read(vector<unsigned int>* vec)

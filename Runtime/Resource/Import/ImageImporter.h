@@ -58,19 +58,17 @@ XBM files[reading]
 XPM files[reading, writing]
 */
 
-#define FREEIMAGE_LIB
-
-//= INCLUDES =====================
+//= INCLUDES ========================
 #include <vector>
 #include "../../Core/EngineDefs.h"
-//================================
+#include "../../RHI/RHI_Definition.h"
+//===================================
 
 struct FIBITMAP;
 
 namespace Directus
 {
 	class Context;
-	class Texture;
 
 	class ENGINE_CLASS ImageImporter
 	{
@@ -78,16 +76,19 @@ namespace Directus
 		ImageImporter(Context* context);
 		~ImageImporter();
 
-		void LoadAsync(const std::string& filePath, Texture* texInfo);
-		bool Load(const std::string& filePath, Texture* texInfo);
-		bool RescaleBits(std::vector<std::byte>* rgba, unsigned int fromWidth, unsigned int fromHeight, unsigned int toWidth, unsigned int toHeight);
+		bool Load(const std::string& filePath, RHI_Texture* texture);
 
-	private:
-		unsigned int ComputeChannelCount(FIBITMAP* bitmap, unsigned int bpp);
-		bool GetBitsFromFIBITMAP(std::vector<std::byte>* rgba, FIBITMAP* bitmap);
-		bool GetRescaledBitsFromBitmap(std::vector<std::byte>* rgbaOut, int width, int height, FIBITMAP* bitmap);
-		void GenerateMipmapsFromFIBITMAP(FIBITMAP* bitmap, Texture* imageData);	
-		bool GrayscaleCheck(const std::vector<std::byte>& dataRGBA, int width, int height);
+	private:	
+		bool GetBitsFromFIBITMAP(std::vector<std::byte>* data, FIBITMAP* bitmap, unsigned int width, unsigned int height, unsigned int channels);
+		void GenerateMipmaps(FIBITMAP* bitmap, RHI_Texture* texture, unsigned int width, unsigned int height, unsigned int channels);
+
+		unsigned int ComputeChannelCount(FIBITMAP* bitmap);
+		unsigned int ComputeBytesPerChannel(FIBITMAP* bitmap);
+		Texture_Format ComputeTextureFormat(unsigned int bpp, unsigned int channels);
+		bool IsVisuallyGrayscale(FIBITMAP* bitmap);
+		FIBITMAP* ApplyBitmapCorrections(FIBITMAP* bitmap);
+		FIBITMAP* _FreeImage_ConvertTo32Bits(FIBITMAP* bitmap);
+		FIBITMAP* _FreeImage_Rescale(FIBITMAP* bitmap, unsigned int width, unsigned int height);
 
 		Context* m_context;
 	};

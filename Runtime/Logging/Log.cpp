@@ -21,15 +21,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES ========================
 #include "Log.h"
-#include <sstream> 
 #include <fstream>
 #include "ILogger.h"
-#include "../Math/Vector2.h"
-#include "../Math/Vector3.h"
-#include "../Math/Vector4.h"
-#include "../Math/Quaternion.h"
-#include "../Scene/GameObject.h"
+#include "../World/Actor.h"
 #include "../FileSystem/FileSystem.h"
+#include <stdarg.h>
 //===================================
 
 //= NAMESPACES ================
@@ -62,106 +58,116 @@ namespace Directus
 	}
 
 	//= LOGGING ==========================================================================
-	void Log::Write(const string& text, LogType type) // all functions resolve to that one
+	void Log::Write(const char* text, Log_Type type) // all functions resolve to that one
 	{
 		// if a logger is available use it, if not, write to file
-		if (!m_logger.expired())
-		{
-			LogString(text, type);
-			return;
-		}
-
-		LogToFile(text, type);
+		!m_logger.expired() ? LogString(text, type) : LogToFile(text, type);
 	}
 
-	void Log::Write(const char* text, LogType type)
+	void Log::WriteFInfo(const char* text, ...)
 	{
-		Write(string(text), type);
+		char buffer[1024];
+		va_list args;
+		va_start(args, text);
+		int w = vsnprintf(buffer, sizeof(buffer), text, args);
+		va_end(args);
+
+		Write(buffer, Log_Info);
 	}
 
-	void Log::Write(const weak_ptr<GameObject>& gameObject, LogType type)
+	void Log::WriteFWarning(const char* text, ...)
 	{
-		gameObject.expired() ? Write("Null", type) : Write(gameObject.lock()->GetName(), type);
+		char buffer[1024];
+		va_list args;
+		va_start(args, text);
+		int w = vsnprintf(buffer, sizeof(buffer), text, args);
+		va_end(args);
+
+		Write(buffer, Log_Warning);
 	}
 
-	void Log::Write(const Vector2& vector, LogType type)
+	void Log::WriteFError(const char* text, ...)
 	{
-		string x = "X: " + to_string(vector.x);
-		string y = "Y: " + to_string(vector.y);
+		char buffer[1024];
+		va_list args;
+		va_start(args, text);
+		int w = vsnprintf(buffer, sizeof(buffer), text, args);
+		va_end(args);
 
-		Write(x + ", " + y, type);
+		Write(buffer, Log_Error);
 	}
 
-	void Log::Write(const Vector3& vector, LogType type)
+	void Log::Write(const string& text, Log_Type type) 
 	{
-		string x = "X: " + to_string(vector.x);
-		string y = "Y: " + to_string(vector.y);
-		string z = "Z: " + to_string(vector.z);
-
-		Write(x + ", " + y + ", " + z, type);
+		Write(text.c_str(), type);
 	}
 
-	void Log::Write(const Vector4& vector, LogType type)
+	void Log::Write(const Vector2& vector, Log_Type type)
 	{
-		string x = "X: " + to_string(vector.x);
-		string y = "Y: " + to_string(vector.y);
-		string z = "Z: " + to_string(vector.z);
-		string w = "W: " + to_string(vector.w);
-
-		Write(x + ", " + y + ", " + z + ", " + w, type);
+		Write(vector.ToString(), type);
 	}
 
-	void Log::Write(const Quaternion& quaternion, LogType type)
+	void Log::Write(const Vector3& vector, Log_Type type)
 	{
-		string x = "X: " + to_string(quaternion.x);
-		string y = "Y: " + to_string(quaternion.y);
-		string z = "Z: " + to_string(quaternion.z);
-		string w = "W: " + to_string(quaternion.w);
-
-		Write(x + ", " + y + ", " + z + ", " + w, type);
+		Write(vector.ToString(), type);
 	}
 
-	void Log::Write(float value, LogType type)
+	void Log::Write(const Vector4& vector, Log_Type type)
 	{
-		Write(to_string(value), type);
+		Write(vector.ToString(), type);
 	}
 
-	void Log::Write(double value, LogType type)
+	void Log::Write(const Quaternion& quaternion, Log_Type type)
 	{
-		Write(to_string(value), type);
+		Write(quaternion.ToString(), type);
 	}
 
-	void Log::Write(int value, LogType type)
+	void Log::Write(float value, Log_Type type)
 	{
 		Write(to_string(value), type);
 	}
 
-	void Log::Write(unsigned int value, LogType type)
+	void Log::Write(double value, Log_Type type)
 	{
-		Write(int(value), type);
+		Write(to_string(value), type);
 	}
 
-	void Log::Write(bool value, LogType type)
+	void Log::Write(int value, Log_Type type)
+	{
+		Write(to_string(value), type);
+	}
+
+	void Log::Write(unsigned int value, Log_Type type)
+	{
+		Write(to_string(value), type);
+	}
+
+	void Log::Write(size_t value, Log_Type type)
+	{
+		Write(to_string(value), type);
+	}
+
+	void Log::Write(bool value, Log_Type type)
 	{
 		value ? Write("True", type) : Write("False", type);
 	}
 
-	void Log::Write(size_t value, LogType type)
+	void Log::Write(const weak_ptr<Actor>& actor, Log_Type type)
 	{
-		Write(int(value), type);
+		actor.expired() ? Write("Null", type) : Write(actor.lock()->GetName(), type);
 	}
 
-	void Log::LogString(const string& text, LogType type)
+	void Log::LogString(const char* text, Log_Type type)
 	{
 		lock_guard<mutex> guard(m_mutex);
-		m_logger.lock()->Log(text, type);
+		m_logger.lock()->Log(string(text), type);
 	}
 
-	void Log::LogToFile(const string& text, LogType type)
+	void Log::LogToFile(const char* text, Log_Type type)
 	{
 		lock_guard<mutex> guard(m_mutex);
 
-		string prefix = (type == Info) ? "Info:" : (type == Warning) ? "Warning:" : "Error:";
+		string prefix = (type == Log_Info) ? "Info:" : (type == Log_Warning) ? "Warning:" : "Error:";
 		string finalText = prefix + " " + text;
 
 		// Delete the previous log file (if it exists)

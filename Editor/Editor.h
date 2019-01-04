@@ -21,14 +21,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-//= INCLUDES ====
+//= INCLUDES ==================
 #include <vector>
 #include <memory>
-//===============
+#include "RHI/RHI_Definition.h"
+//=============================
 
-struct ImGuiContext;
 class Widget;
-namespace Directus {class Context;}
+namespace Directus { class Context; }
 
 class Editor
 {
@@ -36,15 +36,22 @@ public:
 	Editor();
 	~Editor();
 
-	void Initialize(Directus::Context* context);
+	bool Initialize(Directus::Context* context, void* windowHandle);
 	void Resize();
-	void Update();
+	void Tick(float deltaTime);
 	void Shutdown();
 
 private:
-	void DrawEditor();
+	void Widgets_Create();
+	void Widgets_Tick(float deltaTime);
+
+	void DockSpace_Begin();
+	void DockSpace_End();
+	
 	void ApplyStyle();
 
 	std::vector<std::unique_ptr<Widget>> m_widgets;
-	Directus::Context* m_context;
+	std::shared_ptr<Directus::RHI_Device> m_rhiDevice;
+	Directus::Context* m_context	= nullptr;
+	bool m_initialized				= false;
 };
